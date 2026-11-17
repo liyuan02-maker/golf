@@ -352,6 +352,6 @@ function renderRange(){
     $('#rgClub').onchange=e=>{RG.club=e.target.value;saveRG()};
     $('#rgStart').onclick=()=>{if(RG.voice&&window.speechSynthesis){try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}}startCam()};
   }
-  $('#rgExit').onclick=()=>{stopCam(true);view='start';render();window.scrollTo(0,0)};
+  $('#rgExit').onclick=()=>{stopCam(true);START.step='home';view='start';render();window.scrollTo(0,0)};
   drawRangeList();
 }

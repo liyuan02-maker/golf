@@ -107,6 +107,14 @@ body.starting nav{display:none}
 .chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.chips div{background:#f7f5ee;border-radius:8px;padding:6px 8px;font-size:12px;color:var(--mute);display:flex;justify-content:space-between;align-items:center}.chips b{color:var(--ink);font-size:14px}
 .flrow{display:flex;gap:6px;align-items:center;margin-top:6px}.flrow span{width:36px;font-size:13px;color:var(--mute)}
 .flrow button{flex:1;padding:8px 2px;border-radius:10px;border:1px solid #d6d2c4;background:#fff;font-size:14px}.flrow button.on{background:var(--g);color:#fff;border-color:var(--g)}
+.bigchoice{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:2px solid #d6d2c4;background:#fff;border-radius:16px;padding:18px 16px;margin-top:12px;color:var(--ink)}
+.bigchoice .ic{font-size:40px}.bigchoice b{display:block;font-size:20px}.bigchoice small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+.bigchoice:active{background:#eef5ee;border-color:var(--g2)}
+.stephead{display:flex;justify-content:space-between;align-items:center;color:var(--mute);font-size:13px;margin-bottom:6px}
+.optgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.optgrid button{padding:14px 6px;border-radius:12px;border:1px solid #d6d2c4;background:#fff;font-size:16px}
+.optgrid button.on{background:var(--g);color:#fff;border-color:var(--g)}
+.teechoice{display:flex;align-items:center;gap:14px;width:100%;border:2px solid #d6d2c4;background:#fff;border-radius:14px;padding:16px;margin-top:10px;font-size:18px;color:var(--ink)}
+.teechoice .dot{width:34px;height:34px;border-radius:50%;border:2px solid #999;display:flex;align-items:center;justify-content:center;font-size:0}
 .gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
 .gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .gps .yd b{display:block;font-size:34px;line-height:1.1}
@@ -178,33 +186,34 @@ function render(){
   if(view!=='range'&&typeof RG!=='undefined'&&RG.on)stopCam(true);
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
   if(S){$('#title').textContent='⛳ '+(S.course||'高爾夫記分卡');
-    const p=S.players[0],t=totals(p);$('#sub').textContent=S.date+'・'+p.name+' '+(t.played?t.s+'桿 ('+vsPar(t.diff)+')':'尚未記分');}
+    const p=S.players[0],t=totals(p);$('#sub').textContent=S.date+(S.tee?'・'+S.tee+' tee':'')+'・'+p.name+' '+(t.played?t.s+'桿 ('+vsPar(t.diff)+')':'尚未記分');}
   if(!S && ['play','map','card'].includes(view)) view='setup';
   if(S){loadGreens();loadOSMCache();if(SAT.map)drawOSMLayer()}
   ({setup:renderSetup,play:renderPlay,map:renderMap,card:renderCard,bag:renderBag,caddie:renderCaddie,start:renderStart,range:()=>window.renderRange?renderRange():($('#app').innerHTML='<div class="card">練習場模式載入失敗，請重新整理。</div>')})[view]();
 }
 
+// ---------- 設定（⚙︎）：這一場的資訊、球員 ----------
 function renderSetup(){
-  const names=S?S.players.map(p=>p.name):['我'];
-  $('#app').innerHTML=`
-  <div class="card">
-    <b>新球局</b>
-    <label>球場名稱</label><input id="course" placeholder="例如：林口球場" value="${S?esc(S.course):''}">
-    <label>洞數</label>
-    <select id="holes"><option value="18">18 洞</option><option value="9">9 洞</option></select>
-    <label>球員（最多 4 位）</label>
-    ${[0,1,2,3].map(i=>`<input class="pn" style="margin-bottom:6px" placeholder="球員 ${i+1}${i?'（選填）':''}" value="${esc(names[i]||'')}">`).join('')}
-    <button class="btn" id="start">${S?'開始新球局（清除目前紀錄）':'開始記分'}</button>
-    ${S?'<button class="btn ghost" id="back">回到目前球局</button>':''}
-    <div class="hint">各洞標準桿可在記分頁面直接調整。紀錄會暫存在這支手機的瀏覽器中。</div>
-  </div>`;
-  $('#start').onclick=()=>{
-    const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);
-    if(!ns.length)ns.push('我');
-    const go=()=>{newRound($('#course').value.trim(),ns,+$('#holes').value);view='play';render();if(!G.on)startGPS()};
-    S?confirmBox('確定要開始新球局？目前的紀錄會被清除。',go):go();
-  };
-  if(S)$('#back').onclick=()=>{view='play';render()};
+  if(!S){view='start';START.step='home';return render()}
+  const lab=S.nines?S.nines.join(' → ')+' 球道':`${S.holes} 洞`;
+  $('#app').innerHTML=`<div class="card"><b>這一場</b>
+    <div style="margin-top:6px">⛳ ${esc(S.course||'')}・${lab}・${S.date}</div>
+    <label>發球台</label><div class="parsel">${TEES.map(([t])=>`<button data-stee="${t}" class="${S.tee===t?'on':''}">${t} tee</button>`).join('')}</div>
+  </div>
+  <div class="card"><b>球員</b>
+    ${S.players.map((p,i)=>`<div class="row" style="margin-top:8px"><input data-pname="${i}" value="${esc(p.name)}" placeholder="${i?'球員名稱':'你的名字'}">${i?`<button class="btn ghost sm" data-pdel="${i}" style="margin:0;color:var(--red);white-space:nowrap">移除</button>`:''}</div>`).join('')}
+    ${S.players.length<4?`<button class="btn ghost" id="pAdd">＋ 幫別人記桿數</button>`:''}
+    <div class="hint">第一位是你自己。最多 4 位。</div>
+  </div>
+  <button class="btn" id="setBack">回到記分</button>
+  <button class="btn ghost" id="setHome">回到首頁（這一場的紀錄會保留）</button>`;
+  document.querySelectorAll('[data-stee]').forEach(b=>b.onclick=()=>{S.tee=b.dataset.stee;save();render()});
+  document.querySelectorAll('[data-pname]').forEach(i=>i.onchange=()=>{S.players[+i.dataset.pname].name=i.value.trim()||(+i.dataset.pname?'球友':'我');save();render()});
+  document.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=()=>confirmBox(`要移除 ${esc(S.players[+b.dataset.pdel].name)} 嗎？他的桿數也會一起刪除。`,()=>{S.players.splice(+b.dataset.pdel,1);save();render()}));
+  if(document.getElementById('pAdd'))$('#pAdd').onclick=()=>{const n=S.holes;S.players.push({name:'球友'+S.players.length,score:Array(n).fill(null),putts:Array(n).fill(null),fw:Array(n).fill(null),pen:Array(n).fill(0)});save();render();
+    const ins=document.querySelectorAll('[data-pname]');const last=ins[ins.length-1];last.focus();last.select()};
+  $('#setBack').onclick=()=>{view='play';render();window.scrollTo(0,0)};
+  $('#setHome').onclick=()=>{START.step='home';view='start';render();window.scrollTo(0,0)};
 }
 
 function renderPlay(){
@@ -843,8 +852,9 @@ function drawSatInfo(){
   }
 }
 
-// ---------- 開場：今天打哪個球場？ ----------
-const START={step:'course',course:null,near:null,nearBusy:false,nearErr:false,holes:18,nines:null};
+// ---------- 開場：先選「下場打球」或「去練習場」 ----------
+// 下場流程：選球場 → 前九／後九打哪個球道 → 發球台 → 開始（預設只記自己）
+const START={step:'home',course:null,near:null,nearBusy:false,nearErr:false,front:'N',back:'N'};
 let COURSES=(()=>{try{return JSON.parse(localStorage.getItem('golf-courses'))||[]}catch(e){return[]}})();
 function rememberCourse(c){COURSES=[{...c,t:Date.now()},...COURSES.filter(x=>x.name!==c.name)].slice(0,10);try{localStorage.setItem('golf-courses',JSON.stringify(COURSES))}catch(e){}}
 async function fetchNear(p){
@@ -864,60 +874,87 @@ function drawNear(){
     el.querySelectorAll('[data-near]').forEach(b=>b.onclick=()=>pickCourse(START.near[+b.dataset.near]));return}
   el.innerHTML=`<div class="hint">${START.near?'附近 25 公里內找不到球場資料，請用上面的搜尋。':START.nearErr?'暫時找不到附近球場，請確認有網路，或用上面的搜尋。':START.nearBusy?'正在找附近的球場⋯':G.err?G.err:'GPS 定位中⋯（請允許使用位置）'}</div>`;
 }
-function ninesOpts(){
-  const cur=START.nines,o=START.holes===18?[{t:'一般 1–18',v:null},{t:'A → B',v:['A','B']},{t:'B → C',v:['B','C']},{t:'C → A',v:['C','A']}]:[{t:'一般 1–9',v:null},{t:'A',v:['A']},{t:'B',v:['B']},{t:'C',v:['C']}];
-  if(cur&&cur.length===2&&!o.some(x=>JSON.stringify(x.v)===JSON.stringify(cur)))o.push({t:cur.join(' → '),v:cur});
-  return o;
+function pickCourse(c){START.course={name:c.name,lat:c.lat,lon:c.lon};START.front='N';START.back='N';goStep('nines')}
+function goStep(s){START.step=s;render();window.scrollTo(0,0)}
+const NEXTL={A:'B',B:'C',C:'A'};
+const TEES=[['紅','#d64541','#fff'],['白','#ffffff','#222'],['藍','#2f6fd6','#fff']];
+function startRound(tee){
+  const c=START.course,me=S&&S.players[0]?S.players[0].name:'我';
+  const f=START.front,b=START.back;
+  const holes=b==='X'?9:18,nines=f==='N'?null:(b==='X'?[f]:[f,b]);
+  newRound(c.name,[me],holes,nines);S.tee=tee;save();rememberCourse(c);
+  loadGreens();if(c.lat!=null&&!GREENS.center){GREENS.center={lat:c.lat,lon:c.lon};saveGreens()}
+  START.step='home';view='play';render();window.scrollTo(0,0);
+  if(!G.on)startGPS();
+  if(!OSM&&GREENS.center)fetchOSM(GREENS.center);
 }
-function pickCourse(c){START.course={name:c.name,lat:c.lat,lon:c.lon};START.step='players';render();window.scrollTo(0,0)}
+const stepHead=(n,t)=>`<div class="stephead"><button class="btn ghost sm" id="stPrev" style="margin:0">← 上一步</button><span>${n} / 3</span></div><h2>${t}</h2>`;
 function renderStart(){
-  if(START.step==='players'&&START.course){
-    const names=S?S.players.map(p=>p.name):['我'];
-    $('#app').innerHTML=`<div class="card start"><div style="font-size:13px;color:var(--mute)">今天的球場</div><h2>⛳ ${esc(START.course.name)}</h2>
-      <label>球員（最多 4 位）</label>
-      ${[0,1,2,3].map(i=>`<input class="pn" style="margin-bottom:6px" placeholder="球員 ${i+1}${i?'（選填）':''}" value="${esc(names[i]||'')}">`).join('')}
-      <label>洞數</label><div class="parsel">${[18,9].map(n=>`<button data-holes="${n}" class="${START.holes===n?'on':''}">${n} 洞</button>`).join('')}</div>
-      <label>球道（27 洞球場選 A／B／C）</label><div class="parsel" style="flex-wrap:wrap">${ninesOpts().map((o,i)=>`<button data-nines="${i}" class="${JSON.stringify(o.v)===JSON.stringify(START.nines)?'on':''}" style="flex:1 0 30%">${o.t}</button>`).join('')}</div>
-      ${START.nines&&START.nines.length===2?`<button class="btn ghost sm" id="stSwap" style="margin-top:6px">⇄ 對調順序（先打 ${START.nines[1]}）</button>`:''}
-      <button class="btn" id="stStart" style="font-size:18px;padding:16px">開始打球</button>
-      <button class="btn ghost" id="stBack">換一個球場</button></div>`;
-    document.querySelectorAll('[data-holes]').forEach(b=>b.onclick=()=>{START.holes=+b.dataset.holes;START.nines=null;render()});
-    document.querySelectorAll('[data-nines]').forEach(b=>b.onclick=()=>{START.nines=ninesOpts()[+b.dataset.nines].v;render()});
-    if(document.getElementById('stSwap'))$('#stSwap').onclick=()=>{START.nines=START.nines.slice().reverse();render()};
-    $('#stBack').onclick=()=>{START.step='course';render()};
-    $('#stStart').onclick=()=>{
-      const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);if(!ns.length)ns.push('我');
-      const c=START.course;newRound(c.name,ns,START.holes,START.nines);rememberCourse(c);
-      loadGreens();if(c.lat!=null&&!GREENS.center){GREENS.center={lat:c.lat,lon:c.lon};saveGreens()}
-      view='play';render();window.scrollTo(0,0);
-      if(!G.on)startGPS();
-      if(!OSM&&GREENS.center)fetchOSM(GREENS.center);
-    };
+  const st=START.step;
+  // ① 首頁：下場或練習場
+  if(st==='home'){
+    let done=0;if(S)S.players[0].score.forEach(x=>{if(x!=null)done++});
+    $('#app').innerHTML=`<div class="card start"><h2>今天要做什麼？</h2>
+      <button class="bigchoice" id="stPlay"><span class="ic">⛳</span><span><b>下場打球</b><small>選球場、球道、發球台，開始記桿數</small></span></button>
+      <button class="bigchoice" id="stRange"><span class="ic">🏌️</span><span><b>去練習場</b><small>用手機鏡頭分析揮桿動作與節奏</small></span></button>
+      ${S?`<button class="btn ghost course" id="stCont" style="margin-top:14px"><span>↩︎ 繼續上一場：${esc(S.course||'')}</span><small>${S.date}${S.tee?`・${S.tee} tee`:''}・已記 ${done} 洞</small></button>`:''}
+    </div>`;
+    $('#stPlay').onclick=()=>goStep('course');
+    $('#stRange').onclick=()=>{view='range';render();window.scrollTo(0,0)};
+    if(S)$('#stCont').onclick=()=>{view='play';render();window.scrollTo(0,0)};
     return;
   }
-  let done=0;if(S)S.players[0].score.forEach(x=>{if(x!=null)done++});
-  $('#app').innerHTML=`<div class="card start"><h2>⛳ 今天打哪個球場？</h2>
-    ${S?`<button class="btn" id="stCont">繼續 ${esc(S.course||'上一場')}<br><small style="font-weight:400;opacity:.85">${S.date}・已記 ${done} 洞</small></button>`:''}
-    <button class="btn ghost course" id="stRange" style="background:#e3efe6"><span>🏌️ 今天去練習場</span><small>用手機鏡頭分析揮桿動作、節奏，並給建議</small></button>
-    <label>搜尋球場</label>
-    <div class="row"><input id="stQ" placeholder="例如：林口、美麗華、揚昇"><button class="btn sm" id="stGo" style="margin:0;white-space:nowrap">搜尋</button></div>
-    <div id="stRes"></div>
-    <div class="sthead">📍 附近的球場</div><div id="stNear"></div>
-    ${COURSES.length?`<div class="sthead">🕘 最近打過</div>${COURSES.map((c,i)=>`<button class="btn ghost course" data-hist="${i}"><span>${esc(c.name)}</span></button>`).join('')}`:''}
-  </div>`;
-  $('#stRange').onclick=()=>{view='range';render();window.scrollTo(0,0)};
-  if(S)$('#stCont').onclick=()=>{view='play';render();window.scrollTo(0,0)};
-  document.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>pickCourse(COURSES[+b.dataset.hist]));
-  const go=async()=>{const q=$('#stQ').value.trim();if(!q)return;const out=$('#stRes');out.innerHTML='<div class="hint">搜尋中⋯</div>';
-    let js=[];try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=zh-TW&q='+encodeURIComponent(q));js=await r.json()}catch(e){}
-    out.innerHTML=js.map((x,i)=>`<button class="btn ghost course" data-res="${i}"><span>${esc(x.name||x.display_name.split(',')[0])}</span><small>${esc(x.display_name.split(',').slice(1,3).join(','))}</small></button>`).join('')+
-      `<button class="btn ghost course" id="stManual"><span>直接用「${esc(q)}」當球場名稱</span><small>${js.length?'':'沒有找到地圖上的球場，'}之後可以在地圖上自己找位置</small></button>`;
-    out.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{const x=js[+b.dataset.res];pickCourse({name:x.name||x.display_name.split(',')[0],lat:+x.lat,lon:+x.lon})});
-    $('#stManual').onclick=()=>pickCourse({name:q,lat:null,lon:null});
-  };
-  $('#stGo').onclick=go;$('#stQ').onkeydown=e=>{if(e.key==='Enter')go()};
-  drawNear();
-  if(G.pos)fetchNear(G.pos);
+  // ② 選球場
+  if(st==='course'){
+    $('#app').innerHTML=`<div class="card start">${stepHead(1,'今天打哪個球場？')}
+      <div class="row"><input id="stQ" placeholder="搜尋球場，例如：台北、林口"><button class="btn sm" id="stGo" style="margin:0;white-space:nowrap">搜尋</button></div>
+      <div id="stRes"></div>
+      <div class="sthead">📍 附近的球場</div><div id="stNear"></div>
+      ${COURSES.length?`<div class="sthead">🕘 最近打過</div>${COURSES.map((c,i)=>`<button class="btn ghost course" data-hist="${i}"><span>${esc(c.name)}</span></button>`).join('')}`:''}
+    </div>`;
+    $('#stPrev').onclick=()=>goStep('home');
+    document.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>pickCourse(COURSES[+b.dataset.hist]));
+    const go=async()=>{const q=$('#stQ').value.trim();if(!q)return;const out=$('#stRes');out.innerHTML='<div class="hint">搜尋中⋯</div>';
+      let js=[];try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=zh-TW&q='+encodeURIComponent(q));js=await r.json()}catch(e){}
+      out.innerHTML=js.map((x,i)=>`<button class="btn ghost course" data-res="${i}"><span>${esc(x.name||x.display_name.split(',')[0])}</span><small>${esc(x.display_name.split(',').slice(1,3).join(','))}</small></button>`).join('')+
+        `<button class="btn ghost course" id="stManual"><span>直接用「${esc(q)}」當球場名稱</span><small>${js.length?'':'沒有找到地圖上的球場，'}之後可以在地圖上自己找位置</small></button>`;
+      out.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{const x=js[+b.dataset.res];pickCourse({name:x.name||x.display_name.split(',')[0],lat:+x.lat,lon:+x.lon})});
+      $('#stManual').onclick=()=>pickCourse({name:q,lat:null,lon:null});
+    };
+    $('#stGo').onclick=go;$('#stQ').onkeydown=e=>{if(e.key==='Enter')go()};
+    drawNear();if(G.pos)fetchNear(G.pos);
+    return;
+  }
+  // ③ 前九、後九打哪個球道
+  if(st==='nines'){
+    const f=START.front,b=START.back;
+    const fOpts=[['N','1–9 洞'],['A','A 球道'],['B','B 球道'],['C','C 球道']];
+    const bOpts=f==='N'?[['N','10–18 洞'],['X','不打後九']]:[...['A','B','C'].filter(x=>x!==f).map(x=>[x,x+' 球道']),['X','不打後九']];
+    $('#app').innerHTML=`<div class="card start">${stepHead(2,'打哪個球道？')}
+      <div style="color:var(--mute);margin-top:-4px">⛳ ${esc(START.course.name)}</div>
+      <label>前九洞</label><div class="optgrid">${fOpts.map(([v,t])=>`<button data-front="${v}" class="${f===v?'on':''}">${t}</button>`).join('')}</div>
+      <label>後九洞</label><div class="optgrid">${bOpts.map(([v,t])=>`<button data-back="${v}" class="${b===v?'on':''}">${t}</button>`).join('')}</div>
+      <div class="hint">一般 18 洞球場選「1–9 洞」和「10–18 洞」。有 A、B、C 三個球道的 27 洞球場，選今天要打的兩個。</div>
+      <button class="btn" id="stNext" style="font-size:18px;padding:16px">下一步</button>
+    </div>`;
+    $('#stPrev').onclick=()=>goStep('course');
+    document.querySelectorAll('[data-front]').forEach(x=>x.onclick=()=>{START.front=x.dataset.front;START.back=START.front==='N'?'N':NEXTL[START.front];render()});
+    document.querySelectorAll('[data-back]').forEach(x=>x.onclick=()=>{START.back=x.dataset.back;render()});
+    $('#stNext').onclick=()=>goStep('tee');
+    return;
+  }
+  // ④ 發球台
+  if(st==='tee'){
+    const f=START.front,b=START.back,lab=f==='N'?(b==='X'?'1–9 洞':'1–18 洞'):(b==='X'?`${f} 球道`:`${f} → ${b} 球道`);
+    $('#app').innerHTML=`<div class="card start">${stepHead(3,'打哪個發球台？')}
+      <div style="color:var(--mute);margin-top:-4px">⛳ ${esc(START.course.name)}・${lab}</div>
+      ${TEES.map(([t,bg,fg])=>`<button class="teechoice" data-tee="${t}"><span class="dot" style="background:${bg};color:${fg}">●</span><b>${t} tee</b></button>`).join('')}
+      <div class="hint">點一下就直接開始。預設只記你自己的桿數，要幫別人記可以到右上角 ⚙︎ 加入。</div>
+    </div>`;
+    $('#stPrev').onclick=()=>goStep('nines');
+    document.querySelectorAll('[data-tee]').forEach(x=>x.onclick=()=>startRound(x.dataset.tee));
+    return;
+  }
 }
 
 function confirmBox(msg,ok){
@@ -927,7 +964,7 @@ function confirmBox(msg,ok){
   $('#mYes').onclick=()=>{$('#modal').classList.remove('show');ok()};
 }
 
-$('#gear').onclick=()=>{view='setup';render();window.scrollTo(0,0)};
+$('#gear').onclick=()=>{if(!S){START.step='home';view='start'}else view='setup';render();window.scrollTo(0,0)};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;render();window.scrollTo(0,0)});
 render();
 // 一進來就自動開啟 GPS（有進行中的球局時）
