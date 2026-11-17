@@ -90,6 +90,10 @@ td.sub{background:#f7f5ee;font-weight:700}
 .dist-tip{background:rgba(0,0,0,.72)!important;color:#fff!important;border:0!important;font-weight:700;font-size:14px;box-shadow:none!important;padding:2px 8px!important}
 .dist-tip:before{display:none}
 .markbar{background:#fff6d6;border-radius:10px;padding:10px;font-size:14px;display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.hzrow{background:rgba(255,255,255,.07);border-radius:10px;padding:8px 10px;font-size:14px;margin-top:6px;line-height:1.7}
+.hzrow b{font-size:17px}
+.wxrow{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.07);border-radius:10px;padding:8px 10px;margin-top:6px}
+.pin.hz{background:#fff;border-color:#333;font-size:14px}
 .gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
 .gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .gps .yd b{display:block;font-size:34px;line-height:1.1}
@@ -208,7 +212,7 @@ function render(){
   if(S){$('#title').textContent='⛳ '+(S.course||'高爾夫記分卡');
     const p=S.players[0],t=totals(p);$('#sub').textContent=S.date+'・'+p.name+' '+(t.played?t.s+'桿 ('+vsPar(t.diff)+')':'尚未記分');}
   if(!S && ['play','map','card'].includes(view)) view='setup';
-  if(S){loadMaps();loadGreens()}
+  if(S){loadMaps();loadGreens();loadOSMCache();if(SAT.map)drawOSMLayer()}
   ({setup:renderSetup,play:renderPlay,map:renderMap,card:renderCard,bag:renderBag,caddie:renderCaddie})[view]();
 }
 
@@ -447,6 +451,15 @@ function drawCaddieRes(){
   $('#cdRes').innerHTML=caddieResHTML();
   document.querySelectorAll('#cdRes [data-rec]').forEach(b=>b.onclick=()=>recordShot(b.dataset.rec));
 }
+function drawCaddieWind(){
+  const el=document.getElementById('cdWind');if(!el)return;
+  const p=G.pos||GREENS.center;if(p)loadWeather(p);
+  if(!W.d){el.innerHTML='';return}
+  const brg=CD.brg!=null?CD.brg:(S&&G.pos?holeBearing(S.cur):null),w=windFor(brg);
+  el.innerHTML=`<div class="card" style="font-size:14px">🌬 現在 <b>${dirName(W.d.wind_direction_10m)}風 ${W.d.wind_speed_10m.toFixed(1)} m/s</b>（陣風 ${W.d.wind_gusts_10m.toFixed(0)}）・${Math.round(W.d.temperature_2m)}°C
+    ${w?`<br>這一桿：<b>${windText(w)}</b>${CD.wind!==w.lvl?` <button class="btn sm" id="cdAutoW" style="margin-left:6px">套用</button>`:'（已套用）'}`:''}</div>`;
+  const b=document.getElementById('cdAutoW');if(b)b.onclick=()=>{CD.wind=w.lvl;render()};
+}
 function renderCaddie(){
   const u=BAG.unit,sg=n=>(n>0?'+':'')+n;
   $('#app').innerHTML=`<div class="card"><b>🧢 電子桿弟</b>
@@ -457,9 +470,10 @@ function renderCaddie(){
     <div class="stepper" style="margin-top:0"><button data-elev="-5">−</button><span class="val" style="font-size:24px">${sg(+CD.elev||0)}</span><button data-elev="5">+</button></div>
     <label>球位</label><div class="parsel">${LIE.map(x=>`<button data-lie="${x[0]}" class="${CD.lie===x[0]?'on':''}">${x[1]}</button>`).join('')}</div>
   </div>
+  <div id="cdWind"></div>
   <div id="cdRes"></div>
   <div class="hint" style="text-align:center">風和球位是一般經驗值的估算：強逆風 +12%、逆風 +6%、順風 −4%、強順風 −8%、長草 +5%、沙坑 +10%；高低差 1:1 加減。</div>`;
-  drawCaddieRes();
+  drawCaddieRes();drawCaddieWind();
   $('#cdDist').oninput=e=>{CD.dist=e.target.value;drawCaddieRes()};
   document.querySelectorAll('[data-wind]').forEach(b=>b.onclick=()=>{CD.wind=+b.dataset.wind;render()});
   document.querySelectorAll('[data-lie]').forEach(b=>b.onclick=()=>{CD.lie=b.dataset.lie;render()});
@@ -482,6 +496,7 @@ function startGPS(){
   G.on=true;G.err=null;
   try{G.id=navigator.geolocation.watchPosition(p=>{
       G.pos={lat:p.coords.latitude,lon:p.coords.longitude};G.acc=Math.round(p.coords.accuracy);G.err=null;
+      loadWeather(G.pos);if(S&&!OSM&&!OSMST.tried[S.course])fetchOSM(G.pos);
       if(Date.now()-G.last>2500){G.last=Date.now();drawGPS()}},
     e=>{if(e.code!==1&&G.pos){G.err='GPS 訊號不穩，顯示的是最後一次的位置。'}else G.err=e.code===1?'沒有定位權限。請到手機設定允許這個網頁使用位置；在 Claude 的預覽頁面裡無法使用 GPS，請用你自己的網址開啟。':'暫時抓不到 GPS 訊號，請到空曠的地方再試一次。';drawGPS()},
     {enableHighAccuracy:true,maximumAge:2000,timeout:20000})}catch(e){G.err='這個環境不能使用 GPS。'}
@@ -489,28 +504,133 @@ function startGPS(){
 }
 function stopGPS(){try{navigator.geolocation.clearWatch(G.id)}catch(e){}G.on=false;G.pos=null;try{G.lock&&G.lock.release()}catch(e){}G.lock=null;drawGPS()}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&G.on)keepAwake()});
-function greenDist(h){const g=GREENS[h+1];if(!g||!G.pos)return null;const o={};['f','c','b'].forEach(k=>{if(g[k])o[k]=toU(distM(G.pos,g[k]))});return o}
+// ---------- 幾何、球場資料（OpenStreetMap）、天氣 ----------
+const RAD=Math.PI/180;
+function xy(p,o){return{x:(p.lon-o.lon)*Math.cos(o.lat*RAD)*111320,y:(p.lat-o.lat)*110540}}
+function inPoly(P){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if((a.y>0)!==(b.y>0)&&0<(b.x-a.x)*(0-a.y)/(b.y-a.y)+a.x)c=!c}return c}
+function polyNear(pts,o){const P=pts.map(p=>xy(p,o));if(inPoly(P))return 0;let m=1e9;
+  for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length],dx=b.x-a.x,dy=b.y-a.y;
+    const t=Math.max(0,Math.min(1,-(a.x*dx+a.y*dy)/((dx*dx+dy*dy)||1)));m=Math.min(m,Math.hypot(a.x+t*dx,a.y+t*dy))}return m}
+function polyFar(pts,o){return Math.max(...pts.map(p=>{const q=xy(p,o);return Math.hypot(q.x,q.y)}))}
+function centroid(pts){if(pts.length>2&&pts[0].lat===pts[pts.length-1].lat&&pts[0].lon===pts[pts.length-1].lon)pts=pts.slice(0,-1);const n=pts.length;return{lat:pts.reduce((s,p)=>s+p.lat,0)/n,lon:pts.reduce((s,p)=>s+p.lon,0)/n}}
+function bearing(a,b){const y=Math.sin((b.lon-a.lon)*RAD)*Math.cos(b.lat*RAD),x=Math.cos(a.lat*RAD)*Math.sin(b.lat*RAD)-Math.sin(a.lat*RAD)*Math.cos(b.lat*RAD)*Math.cos((b.lon-a.lon)*RAD);return(Math.atan2(y,x)/RAD+360)%360}
+const angDiff=(a,b)=>((a-b+540)%360)-180;
+const dirName=d=>['北','東北','東','東南','南','西南','西','西北'][Math.round(d/45)%8];
+
+// OpenStreetMap 球場資料
+const osmKey=()=>'golf-osm:'+((S&&S.course)||'未命名球場');
+let OSM=null;const OSMST={busy:false,tried:{},msg:''};
+function loadOSMCache(){try{OSM=JSON.parse(localStorage.getItem(osmKey()))}catch(e){OSM=null}}
+async function fetchOSM(c,manual){
+  if(OSMST.busy||!S)return;OSMST.busy=true;OSMST.tried[S.course]=1;OSMST.msg='正在載入球場資料⋯';drawSatInfo();
+  const a=`(around:1800,${c.lat.toFixed(5)},${c.lon.toFixed(5)})`;
+  const q=`[out:json][timeout:25];(way["golf"="green"]${a};way["golf"="bunker"]${a};way["golf"~"water_hazard"]${a};way["natural"="water"]${a};way["golf"="hole"]${a};);out geom;`;
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    const js=await r.json();const o={t:Date.now(),greens:[],hz:[],holes:{}};
+    js.elements.forEach(e=>{if(!e.geometry||e.geometry.length<2)return;const pts=e.geometry.map(g=>({lat:+g.lat.toFixed(6),lon:+g.lon.toFixed(6)}));const tg=e.tags||{};
+      if(tg.golf==='green')o.greens.push({pts});
+      else if(tg.golf==='bunker')o.hz.push({t:'sand',pts});
+      else if((tg.golf||'').includes('water')||tg.natural==='water')o.hz.push({t:'water',pts});
+      else if(tg.golf==='hole'&&tg.ref)o.holes[tg.ref]={pts,par:+tg.par||null}});
+    OSM=o;try{localStorage.setItem(osmKey(),JSON.stringify(o))}catch(e){}
+    const ns=o.hz.filter(h=>h.t==='sand').length,nw=o.hz.length-ns;
+    OSMST.msg=(o.greens.length||o.hz.length)?`已從公開地圖資料載入：${o.greens.length} 個果嶺、${ns} 個沙坑、${nw} 個水池${Object.keys(o.holes).length?`、${Object.keys(o.holes).length} 洞的路線`:''}。`:
+      '這個球場在公開地圖資料裡沒有詳細標示，請在記分頁的衛星圖上手動標記果嶺和障礙物。';
+  }catch(e){OSMST.msg=manual?'載入失敗，請確認手機有網路，稍後再試。':''}
+  OSMST.busy=false;drawOSMLayer();drawGPS();drawSatInfo();
+}
+// 這洞的果嶺：手動標記優先，其次用公開地圖資料的果嶺形狀
+function greenOf(h){
+  const m=GREENS[h+1]||{};let poly=null;
+  if(OSM&&OSM.greens.length){const hole=OSM.holes[h+1];const ref=hole?hole.pts[hole.pts.length-1]:(m.c||m.f||m.b);
+    if(ref){let best=null,bd=1e9;OSM.greens.forEach(g=>{const d=distM(centroid(g.pts),ref);if(d<bd){bd=d;best=g}});if(best&&bd<(hole?90:45))poly=best.pts}}
+  const c=m.c||(poly?centroid(poly):null);
+  return{m,poly,c,any:!!(c||m.f||m.b)};
+}
+function greenDists(h){
+  if(!G.pos)return null;const g=greenOf(h),p=G.pos,o={};
+  if(g.c)o.c=distM(p,g.c);
+  if(g.m.f)o.f=distM(p,g.m.f);else if(g.poly)o.f=polyNear(g.poly,p);else if(o.c!=null){o.f=Math.max(0,o.c-13.7);o.fEst=true}
+  if(g.m.b)o.b=distM(p,g.m.b);else if(g.poly)o.b=polyFar(g.poly,p);
+  return(o.c!=null||o.f!=null||o.b!=null)?o:null;
+}
+function holeBearing(h,from){
+  const g=greenOf(h),p=from||G.pos;
+  if(p&&g.c)return bearing(p,g.c);
+  const hole=OSM&&OSM.holes[h+1];if(hole)return bearing(hole.pts[0],hole.pts[hole.pts.length-1]);
+  return null;
+}
+function hazards(){return[...(OSM?OSM.hz:[]),...((GREENS.hz||[]).map(p=>({t:p.t,pts:[{lat:p.lat,lon:p.lon}]})))]}
+// 前方最近的沙坑、水池：到（碰到邊緣）與過（越過）的距離
+function hazAhead(h){
+  if(!G.pos)return[];const p=G.pos,brg=holeBearing(h),gd=greenDists(h),gmax=gd?(gd.b||gd.c||gd.f)+25:400;const best={};
+  hazards().forEach(z=>{const cen=z.pts.length>2?centroid(z.pts):z.pts[0];const dc=distM(p,cen);if(dc>450)return;
+    if(brg!=null){if(Math.abs(angDiff(bearing(p,cen),brg))>40)return;if(dc>gmax)return}
+    const to=z.pts.length>2?polyNear(z.pts,p):dc,carry=z.pts.length>2?polyFar(z.pts,p):dc;
+    if(carry<8)return;
+    if(!best[z.t]||to<best[z.t].to)best[z.t]={t:z.t,to,carry,pt:z.pts.length>2};
+  });
+  return['water','sand'].map(t=>best[t]).filter(Boolean);
+}
+
+// 天氣（Open-Meteo）
+const W={d:null,t:0,busy:false};
+async function loadWeather(p){
+  if(!p||W.busy||Date.now()-W.t<600000||Date.now()-(W.fail||0)<60000)return;W.busy=true;
+  try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.lat.toFixed(3)}&longitude=${p.lon.toFixed(3)}&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=ms&timezone=auto`);
+    const js=await r.json();if(js.current){W.d=js.current;W.t=Date.now()}else W.fail=Date.now()}catch(e){W.fail=Date.now()}
+  W.busy=false;drawGPS();if(view==='caddie')drawCaddieWind();
+}
+// 這一桿的逆順風與側風（m/s）
+function windFor(brg){
+  if(!W.d||brg==null)return null;const s=W.d.wind_speed_10m,d=angDiff(W.d.wind_direction_10m,brg)*RAD;
+  const head=s*Math.cos(d),cross=s*Math.sin(d);
+  const lvl=head>=5?-2:head>=2?-1:head<=-5?2:head<=-2?1:0;
+  return{head,cross,lvl};
+}
+function windText(w){if(!w)return'';const a=Math.abs(w.head).toFixed(1),c=Math.abs(w.cross).toFixed(1);
+  return`${Math.abs(w.head)<0.5?'幾乎沒有逆順風':(w.head>0?`逆風 ${a}`:`順風 ${a}`)+' m/s'}${Math.abs(w.cross)>=1?`、${w.cross>0?'右往左':'左往右'}側風 ${c} m/s`:''}`}
+function compass(brg){
+  const wd=W.d?W.d.wind_direction_10m:null;
+  return`<svg viewBox="-34 -34 68 68" width="68" height="68" aria-label="方向與風向">
+    <circle r="31" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.35)"/>
+    <text y="-21" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">N</text>
+    ${brg!=null?`<g transform="rotate(${brg.toFixed(0)})"><line y1="6" y2="-22" stroke="#9be37a" stroke-width="3.5" stroke-linecap="round"/><path d="M0 -29 l-6 9 h12z" fill="#9be37a"/></g>`:''}
+    ${wd!=null?`<g transform="rotate(${(wd+180)%360})"><line y1="20" y2="-16" stroke="#6cc3ff" stroke-width="2.5" stroke-dasharray="4 3"/><path d="M0 -22 l-5 8 h10z" fill="#6cc3ff"/></g>`:''}
+  </svg>`;
+}
+function askCaddie(dM,brg){CD.dist=toU(dM);CD.elev=0;const w=windFor(brg);if(w)CD.wind=w.lvl;CD.brg=brg;view='caddie';render();window.scrollTo(0,0)}
 
 function drawGPS(){
   drawSat();drawSatInfo();
   const box=$('#gpsBox');if(!box||!S)return;
-  const h=S.cur,u=BAG.unit,g=GREENS[h+1]||{};
-  if(!G.on){box.innerHTML=`<div class="gps"><b>📡 GPS 測距</b><div style="font-size:13px;opacity:.8;margin-top:4px">顯示到果嶺前、中、後的距離，也能用 GPS 量你每一桿打多遠。</div>${G.err?`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`:''}<button class="btn hi" id="gpsOn">開啟 GPS</button></div>`;$('#gpsOn').onclick=startGPS;return}
-  const d=greenDist(h);
-  let html=`<div class="gps"><div class="row" style="justify-content:space-between"><b>📡 第 ${h+1} 洞</b><button class="btn sm" id="gpsOff" style="margin:0;background:rgba(255,255,255,.14);color:#fff">關閉 GPS</button></div>`;
+  const h=S.cur,u=BAG.unit;
+  if(!G.on){box.innerHTML=`<div class="gps"><b>📡 GPS 測距</b><div style="font-size:13px;opacity:.8;margin-top:4px">顯示到果嶺前緣、障礙物的距離，還有風向與方向。</div>${G.err?`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`:''}<button class="btn hi" id="gpsOn">開啟 GPS</button></div>`;$('#gpsOn').onclick=startGPS;return}
+  const d=greenDists(h),brg=holeBearing(h);
+  let html=`<div class="gps"><div class="row" style="justify-content:space-between"><b>📡 第 ${h+1} 洞${brg!=null?`<span style="font-weight:400;opacity:.85">・往${dirName(brg)} ${Math.round(brg)}°</span>`:''}</b><button class="btn sm" id="gpsOff" style="margin:0;background:rgba(255,255,255,.14);color:#fff">關閉</button></div>`;
   if(G.err)html+=`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`;
   if(!G.pos){if(!G.err)html+=`<div class="acc" style="margin:14px 0">正在定位⋯</div>`}
   else{
-    if(d&&(d.c!=null||d.f!=null||d.b!=null)){
-      html+=`<div class="yd"><div><b>${d.f??'—'}</b><span>前緣</span></div><div class="c"><b>${d.c??'—'}</b><span>果嶺中心（${u}）</span></div><div><b>${d.b??'—'}</b><span>後緣</span></div></div>`;
-      if(d.c!=null)html+=`<button class="btn" id="gpsAsk">🧢 用 ${d.c} ${u} 問桿弟</button>`;
-    }else html+=`<div style="font-size:13px;opacity:.85;margin:10px 0">這洞還沒標記果嶺位置。走到果嶺上時，打開下面的「標記果嶺位置」按一下，下次打這個球場就會自動顯示距離。</div>`;
+    if(d){
+      html+=`<div class="yd"><div class="c"><b>${d.f!=null?(d.fEst?'≈':'')+toU(d.f):'—'}</b><span>果嶺前緣${d.fEst?'（估）':''}</span></div><div><b>${d.c!=null?toU(d.c):'—'}</b><span>中心</span></div><div><b>${d.b!=null?toU(d.b):'—'}</b><span>後緣</span></div></div>`;
+    }else html+=`<div style="font-size:13px;opacity:.85;margin:10px 0">這洞還沒有果嶺位置。可以在下面的衛星圖上標記，或到「地圖」頁載入球場資料。</div>`;
+    // 障礙物
+    const hz=hazAhead(h);
+    html+=`<div class="hzrow">${hz.length?hz.map(z=>`<div>${z.t==='water'?'💧 水池':'⛱ 沙坑'}　到 <b>${toU(z.to)}</b>${z.pt?`　過 <b>${toU(z.carry)}</b>`:''} ${u}</div>`).join(''):`<div style="opacity:.7">前方 ${toU(450)} ${u} 內沒有已知的沙坑或水池</div>`}</div>`;
+    // 風與方向
+    const w=windFor(brg);
+    html+=`<div class="wxrow">${compass(brg)}<div style="flex:1;font-size:13px;line-height:1.5">${W.d?
+      `🌬 <b>${dirName(W.d.wind_direction_10m)}風 ${W.d.wind_speed_10m.toFixed(1)} m/s</b>（陣風 ${W.d.wind_gusts_10m.toFixed(0)}）・${Math.round(W.d.temperature_2m)}°C<br>${w?`這一桿：<b>${windText(w)}</b>`:'標記果嶺後可以算出這一桿的逆順風'}`:
+      (W.busy?'正在取得天氣⋯':'天氣資料需要網路')}<div style="opacity:.6;font-size:11px">綠箭頭＝往果嶺方向　藍虛線＝風吹的方向</div></div></div>`;
+    if(d&&(d.c!=null||d.f!=null))html+=`<button class="btn" id="gpsAsk">🧢 用${d.c!=null?'中心 '+toU(d.c):'前緣 '+toU(d.f)} ${u} 問桿弟${w?'（已帶入風向）':''}</button>`;
     html+=`<div class="acc">GPS 誤差約 ±${toU(G.acc)} ${u}${G.acc>15?'（訊號較弱，距離僅供參考）':''}</div>`;
     if(SHOT){const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,G.pos));
       html+=`<div style="background:rgba(155,227,122,.15);border-radius:10px;padding:10px;margin-top:10px;text-align:center">正在量 <b>${esc(c?c.name:'球桿')}</b><div style="font-size:36px;font-weight:800;color:#9be37a">${m} <span style="font-size:15px">${u}</span></div>
         <div class="row"><button class="btn" id="shotCancel">取消</button><button class="btn hi" id="shotSave">到球旁了，儲存</button></div></div>`;
     }else html+=`<button class="btn hi" id="shotStart">📏 量這一桿的距離</button>`;
-    html+=`<details style="margin-top:10px"><summary style="font-size:13px;opacity:.85">📍 標記這洞的果嶺位置${g.c?'（已標記）':''}</summary>
+    const g=GREENS[h+1]||{};
+    html+=`<details style="margin-top:10px"><summary style="font-size:13px;opacity:.85">📍 站在果嶺上標記位置${g.c?'（已標記）':''}</summary>
       <div style="font-size:12px;opacity:.75;margin:6px 0">站在果嶺的前緣、中心或後緣，按對應的按鈕。</div>
       <div class="mk"><button class="btn" data-mark="f">前緣${g.f?' ✓':''}</button><button class="btn" data-mark="c">中心${g.c?' ✓':''}</button><button class="btn" data-mark="b">後緣${g.b?' ✓':''}</button></div>
       ${g.c||g.f||g.b?'<button class="btn" id="markClear" style="font-size:13px">清除這洞的標記</button>':''}</details>`;
@@ -521,7 +641,7 @@ function drawGPS(){
   if(wasOpen&&box.querySelector('details'))box.querySelector('details').open=true;
   const on=(id,f)=>{const e=document.getElementById(id);if(e)e.onclick=f};
   on('gpsOff',stopGPS);
-  on('gpsAsk',()=>{CD.dist=d.c;CD.elev=0;view='caddie';render();window.scrollTo(0,0)});
+  on('gpsAsk',()=>askCaddie(d.c!=null?d.c:d.f,brg));
   on('shotStart',pickShotClub);
   on('shotCancel',()=>{SHOT=null;saveShot();drawGPS()});
   on('shotSave',()=>{const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,G.pos));
@@ -532,6 +652,7 @@ function drawGPS(){
   box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;GREENS[h+1]=Object.assign(GREENS[h+1]||{},{[k]:{...G.pos}});if(!GREENS.center)GREENS.center={...G.pos};saveGreens();drawGPS()});
   on('markClear',()=>confirmBox('要清除這洞的果嶺標記嗎？',()=>{delete GREENS[h+1];saveGreens();drawGPS()}));
 }
+
 function pickShotClub(){
   const clubs=BAG.clubs.slice().sort((a,b)=>(cstat(b).avg||0)-(cstat(a).avg||0));
   $('#modalBody').innerHTML=`<b>這一桿用哪支球桿？</b><div style="font-size:13px;color:var(--mute);margin:4px 0 8px">選好後就從現在的位置開始量，打完走到球旁邊再按「儲存」。</div>
@@ -543,8 +664,8 @@ function pickShotClub(){
 }
 
 // ---------- 衛星地圖 ----------
-const SAT={map:null,el:null,layer:null,mode:'hole',markMode:null,target:null,focusKey:null,results:null};
-const MARKNAME={f:'前緣',c:'中心',b:'後緣'};
+const SAT={map:null,el:null,layer:null,osm:null,mode:'hole',markMode:null,target:null,focusKey:null,results:null};
+const MARKNAME={f:'前緣',c:'中心',b:'後緣',sand:'沙坑',water:'水池'};
 const ll=p=>[p.lat,p.lon];
 function mountSat(slotId,mode,height){
   const slot=document.getElementById(slotId);if(!slot)return;
@@ -568,11 +689,11 @@ function focusSat(force){
   if(!force&&key===SAT.focusKey)return;
   SAT.focusKey=key;SAT.target=null;SAT.markMode=null;
   if(SAT.mode==='hole'){
-    const g=GREENS[S.cur+1]||{},pts=['f','c','b'].map(k=>g[k]).filter(Boolean);
+    const go=greenOf(S.cur),g=go.m,pts=[g.f,go.c,g.b].filter(Boolean);
     if(pts.length){const b=pts.map(ll);if(G.pos&&distM(G.pos,pts[0])<700)b.push(ll(G.pos));
       b.length>1?SAT.map.fitBounds(b,{padding:[40,40],maxZoom:18}):SAT.map.setView(b[0],17);return}
   }else{
-    const cs=[];for(let n=1;n<=S.holes;n++)if(GREENS[n]&&GREENS[n].c)cs.push(ll(GREENS[n].c));
+    const cs=[];for(let n=1;n<=S.holes;n++){const go=greenOf(n-1);if(go.c)cs.push(ll(go.c))}
     if(cs.length>1){SAT.map.fitBounds(cs,{padding:[30,30],maxZoom:17});return}
   }
   if(G.pos)SAT.map.setView(ll(G.pos),17);
@@ -580,64 +701,87 @@ function focusSat(force){
 }
 function pin(txt,cls){return L.divIcon({className:'',html:`<div class="pin ${cls||''}">${txt}</div>`,iconSize:[28,28],iconAnchor:[14,14]})}
 function tip(layer,txt){layer.bindTooltip(txt,{permanent:true,direction:'center',className:'dist-tip'})}
+const blank=()=>L.divIcon({className:'',html:''});
+function midTip(a,b,txt){tip(L.marker([(a.lat+b.lat)/2,(a.lon+b.lon)/2],{icon:blank(),interactive:false}).addTo(SAT.layer),txt)}
+// 球場資料（果嶺、沙坑、水池）畫在衛星圖上
+function drawOSMLayer(){
+  if(!SAT.map)return;
+  if(!SAT.osm)SAT.osm=L.layerGroup().addTo(SAT.map);
+  SAT.osm.clearLayers();
+  if(OSM){
+    OSM.greens.forEach(g=>L.polygon(g.pts.map(ll),{color:'#b8f28f',weight:1.5,fillOpacity:.12,interactive:false}).addTo(SAT.osm));
+    OSM.hz.forEach(z=>L.polygon(z.pts.map(ll),{color:z.t==='water'?'#3fa9f5':'#f3d36b',weight:1.5,fillOpacity:.3,interactive:false}).addTo(SAT.osm));
+  }
+  (GREENS.hz||[]).forEach((p,i)=>{const m=L.marker(ll(p),{icon:pin(p.t==='water'?'💧':'⛱','hz')}).addTo(SAT.osm);
+    m.on('click',()=>confirmBox(`要刪除這個${p.t==='water'?'水池':'沙坑'}標記嗎？`,()=>{GREENS.hz.splice(i,1);saveGreens();drawOSMLayer();drawGPS()}))});
+}
 function drawSat(){
   if(!SAT.map||!S)return;
+  if(!SAT.osm)drawOSMLayer();
   if(G.pos&&SAT.map.getZoom()<10)SAT.map.setView(ll(G.pos),17);
-  const L_=SAT.layer;L_.clearLayers();const u=BAG.unit;
+  SAT.layer.clearLayers();const u=BAG.unit;
   if(SAT.mode==='hole'){
-    const g=GREENS[S.cur+1]||{};
-    if(G.pos&&g.c&&!SAT.target){const line=L.polyline([ll(G.pos),ll(g.c)],{color:'#fff',weight:2,dashArray:'6 6'}).addTo(L_);
-      tip(L.marker([(G.pos.lat+g.c.lat)/2,(G.pos.lon+g.c.lon)/2],{icon:L.divIcon({className:'',html:''})}).addTo(L_),`${toU(distM(G.pos,g.c))} ${u}`)}
+    const go=greenOf(S.cur),g=go.m;
+    const front=G.pos&&greenDists(S.cur);
+    if(G.pos&&go.c&&!SAT.target){L.polyline([ll(G.pos),ll(go.c)],{color:'#fff',weight:2,dashArray:'6 6',interactive:false}).addTo(SAT.layer);
+      midTip(G.pos,go.c,front&&front.f!=null?`前緣 ${(front.fEst?'≈':'')+toU(front.f)} ${u}`:`${toU(distM(G.pos,go.c))} ${u}`)}
     if(SAT.target){const t=SAT.target;
-      if(G.pos){L.polyline([ll(G.pos),ll(t)],{color:'#ffd84d',weight:3}).addTo(L_);
-        tip(L.marker([(G.pos.lat+t.lat)/2,(G.pos.lon+t.lon)/2],{icon:L.divIcon({className:'',html:''})}).addTo(L_),`${toU(distM(G.pos,t))} ${u}`)}
-      if(g.c){L.polyline([ll(t),ll(g.c)],{color:'#fff',weight:2,dashArray:'6 6'}).addTo(L_);
-        tip(L.marker([(t.lat+g.c.lat)/2,(t.lon+g.c.lon)/2],{icon:L.divIcon({className:'',html:''})}).addTo(L_),`${toU(distM(t,g.c))} ${u}`)}
-      L.marker(ll(t),{icon:pin('◎','t')}).addTo(L_);
+      if(G.pos){L.polyline([ll(G.pos),ll(t)],{color:'#ffd84d',weight:3,interactive:false}).addTo(SAT.layer);midTip(G.pos,t,`${toU(distM(G.pos,t))} ${u}`)}
+      if(go.c){L.polyline([ll(t),ll(go.c)],{color:'#fff',weight:2,dashArray:'6 6',interactive:false}).addTo(SAT.layer);midTip(t,go.c,`${toU(distM(t,go.c))} ${u}`)}
+      L.marker(ll(t),{icon:pin('◎','t'),interactive:false}).addTo(SAT.layer);
     }
-    ['f','b','c'].forEach(k=>{if(g[k])L.marker(ll(g[k]),{icon:pin(k==='c'?'⛳':MARKNAME[k][0],k==='c'?'c':'')}).addTo(L_)});
+    if(go.poly)L.polygon(go.poly.map(ll),{color:'#fff',weight:2,fillOpacity:0,interactive:false}).addTo(SAT.layer);
+    ['f','b'].forEach(k=>{if(g[k])L.marker(ll(g[k]),{icon:pin(MARKNAME[k][0]),interactive:false}).addTo(SAT.layer)});
+    if(go.c)L.marker(ll(go.c),{icon:pin('⛳','c'),interactive:false}).addTo(SAT.layer);
   }else{
-    for(let n=1;n<=S.holes;n++){const g=GREENS[n];if(g&&g.c){const m=L.marker(ll(g.c),{icon:pin(n,'c')}).addTo(L_);
+    for(let n=1;n<=S.holes;n++){const go=greenOf(n-1);if(go.c){const m=L.marker(ll(go.c),{icon:pin(n,'c')}).addTo(SAT.layer);
       m.on('click',()=>{S.cur=n-1;save();view='play';render();window.scrollTo(0,0)})}}
   }
-  if(G.pos){if(G.acc)L.circle(ll(G.pos),{radius:G.acc,color:'#4da3ff',weight:1,fillOpacity:.15,interactive:false}).addTo(L_);
-    L.circleMarker(ll(G.pos),{radius:8,color:'#fff',weight:3,fillColor:'#1e88ff',fillOpacity:1,interactive:false}).addTo(L_)}
+  if(G.pos){if(G.acc)L.circle(ll(G.pos),{radius:G.acc,color:'#4da3ff',weight:1,fillOpacity:.15,interactive:false}).addTo(SAT.layer);
+    L.circleMarker(ll(G.pos),{radius:8,color:'#fff',weight:3,fillColor:'#1e88ff',fillOpacity:1,interactive:false}).addTo(SAT.layer)}
 }
 function onSatClick(e){
   if(!S)return;const p={lat:e.latlng.lat,lon:e.latlng.lng};
-  if(SAT.mode==='hole'&&SAT.markMode){const h=S.cur;GREENS[h+1]=Object.assign(GREENS[h+1]||{},{[SAT.markMode]:p});
+  if(SAT.mode==='hole'&&SAT.markMode){
+    if(SAT.markMode==='sand'||SAT.markMode==='water'){(GREENS.hz=GREENS.hz||[]).push({t:SAT.markMode,...p});saveGreens();drawOSMLayer()}
+    else{const h=S.cur;GREENS[h+1]=Object.assign(GREENS[h+1]||{},{[SAT.markMode]:p})}
     if(!GREENS.center)GREENS.center=p;saveGreens();SAT.markMode=null;drawGPS();return}
   if(SAT.mode==='hole'){SAT.target=p;drawSat();drawSatInfo()}
 }
 function drawSatInfo(){
   const el=document.getElementById('satInfo');if(!el||!S)return;const u=BAG.unit;
+  const on=(id,f)=>{const x=document.getElementById(id);if(x)x.onclick=f};
   if(SAT.mode==='hole'){
-    const g=GREENS[S.cur+1]||{};let t='';
-    if(SAT.markMode)t=`<div class="markbar">👆 點一下衛星圖上果嶺的<b>${MARKNAME[SAT.markMode]}</b>位置<button class="btn sm" id="mkCancel" style="margin:0 0 0 8px">取消</button></div>`;
-    else if(SAT.target){const d1=G.pos?toU(distM(G.pos,SAT.target)):null,d2=g.c?toU(distM(SAT.target,g.c)):null;
-      t=`<div style="font-size:15px;margin:4px 0">◎ 目標點${d1!=null?`：離你 <b>${d1}</b> ${u}`:''}${d2!=null?`，到果嶺中心 <b>${d2}</b> ${u}`:''}</div>
-        <div class="mapbtns">${d1!=null?`<button class="btn" id="tgAsk">🧢 用 ${d1} ${u} 問桿弟</button>`:''}<button class="btn ghost" id="tgClear" style="flex:0 0 80px">清除</button></div>`}
+    const g=GREENS[S.cur+1]||{},go=greenOf(S.cur);let t='';
+    if(SAT.markMode)t=`<div class="markbar"><span>👆 點一下衛星圖上${SAT.markMode==='sand'||SAT.markMode==='water'?`<b>${MARKNAME[SAT.markMode]}</b>靠近你的邊緣`:`果嶺的<b>${MARKNAME[SAT.markMode]}</b>`}</span><button class="btn sm" id="mkCancel" style="margin:0 0 0 8px">取消</button></div>`;
+    else if(SAT.target){const d1=G.pos?distM(G.pos,SAT.target):null,d2=go.c?toU(distM(SAT.target,go.c)):null;
+      t=`<div style="font-size:15px;margin:4px 0">◎ 目標點${d1!=null?`：離你 <b>${toU(d1)}</b> ${u}`:''}${d2!=null?`，到果嶺中心 <b>${d2}</b> ${u}`:''}</div>
+        <div class="mapbtns">${d1!=null?`<button class="btn" id="tgAsk">🧢 用 ${toU(d1)} ${u} 問桿弟</button>`:''}<button class="btn ghost" id="tgClear" style="flex:0 0 80px">清除</button></div>`}
     else t=`<div class="hint" style="margin-top:4px">點地圖上任一點，可以看到你到那裡、那裡到果嶺的距離。</div>`;
-    t+=`<div style="font-size:13px;color:var(--mute);margin-top:8px">在衛星圖上標記這洞的果嶺${g.c?'（已標記，可重新標記）':''}：</div>
-      <div class="parsel" style="margin-top:4px">${['f','c','b'].map(k=>`<button data-smark="${k}" class="${SAT.markMode===k?'on':''}">${MARKNAME[k]}${g[k]?' ✓':''}</button>`).join('')}</div>`;
+    t+=`<div style="font-size:13px;color:var(--mute);margin-top:8px">在衛星圖上標記果嶺${go.poly&&!g.c?'（已從地圖資料自動找到）':g.c?'（已標記）':''}：</div>
+      <div class="parsel" style="margin-top:4px">${['f','c','b'].map(k=>`<button data-smark="${k}" class="${SAT.markMode===k?'on':''}">${MARKNAME[k]}${g[k]?' ✓':''}</button>`).join('')}</div>
+      <div style="font-size:13px;color:var(--mute);margin-top:8px">標記障礙物（點圖上的標記可以刪除）：</div>
+      <div class="parsel" style="margin-top:4px">${['sand','water'].map(k=>`<button data-smark="${k}" class="${SAT.markMode===k?'on':''}">${k==='sand'?'⛱ 沙坑':'💧 水池'}</button>`).join('')}</div>`;
     el.innerHTML=t;
-    const on=(id,f)=>{const x=document.getElementById(id);if(x)x.onclick=f};
     on('mkCancel',()=>{SAT.markMode=null;drawSatInfo()});
     on('tgClear',()=>{SAT.target=null;drawSat();drawSatInfo()});
-    on('tgAsk',()=>{CD.dist=toU(distM(G.pos,SAT.target));CD.elev=0;view='caddie';render();window.scrollTo(0,0)});
+    on('tgAsk',()=>askCaddie(distM(G.pos,SAT.target),bearing(G.pos,SAT.target)));
     el.querySelectorAll('[data-smark]').forEach(b=>b.onclick=()=>{SAT.markMode=b.dataset.smark;SAT.target=null;drawSat();drawSatInfo()});
   }else{
-    let n=0;for(let i=1;i<=S.holes;i++)if(GREENS[i]&&GREENS[i].c)n++;
+    let n=0;for(let i=0;i<S.holes;i++)if(greenOf(i).c)n++;
     el.innerHTML=`<div class="row" style="margin-top:8px"><input id="cSearch" placeholder="搜尋球場，例如：林口 高爾夫" value="${esc(S.course||'')}"><button class="btn sm" id="cGo" style="margin:0;white-space:nowrap">搜尋</button></div>
       <div id="cRes"></div>
-      <div class="hint">已標記 ${n} / ${S.holes} 洞的果嶺。點圖上的洞號可以跳到那一洞；要標記果嶺，請到記分頁該洞的衛星圖。</div>`;
+      <button class="btn ghost" id="osmGo" ${OSMST.busy?'disabled':''}>${OSMST.busy?'載入中⋯':'⬇︎ 載入這裡的果嶺、沙坑、水池資料'}</button>
+      ${OSMST.msg?`<div class="hint">${OSMST.msg}</div>`:''}
+      <div class="hint">已有 ${n} / ${S.holes} 洞的果嶺位置。點圖上的洞號可以跳到那一洞。資料來自 OpenStreetMap，不一定每個球場都有；沒有的話可以在記分頁的衛星圖手動標記。</div>`;
     const go=async()=>{const q=$('#cSearch').value.trim();if(!q)return;$('#cRes').innerHTML='<div class="hint">搜尋中⋯</div>';
       try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=zh-TW&q='+encodeURIComponent(q));const js=await r.json();
         if(!js.length){$('#cRes').innerHTML='<div class="hint">找不到，換個關鍵字試試，或直接拖曳地圖找到球場。</div>';return}
         $('#cRes').innerHTML=js.map((x,i)=>`<button class="btn ghost" data-res="${i}" style="text-align:left;font-size:14px;font-weight:400;margin-top:6px">${esc(x.display_name)}</button>`).join('');
-        $('#cRes').querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{const x=js[+b.dataset.res];GREENS.center={lat:+x.lat,lon:+x.lon};saveGreens();SAT.map.setView([+x.lat,+x.lon],16);$('#cRes').innerHTML=''})
+        $('#cRes').querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{const x=js[+b.dataset.res];GREENS.center={lat:+x.lat,lon:+x.lon};saveGreens();SAT.map.setView([+x.lat,+x.lon],16);$('#cRes').innerHTML='';fetchOSM(GREENS.center,true)})
       }catch(e){$('#cRes').innerHTML='<div class="hint">搜尋失敗，請確認手機有網路。</div>'}};
-    $('#cGo').onclick=go;$('#cSearch').onkeydown=e=>{if(e.key==='Enter')go()};
+    on('cGo',go);$('#cSearch').onkeydown=e=>{if(e.key==='Enter')go()};
+    on('osmGo',()=>{const c=SAT.map.getCenter();fetchOSM({lat:c.lat,lon:c.lng},true)});
   }
 }
 
