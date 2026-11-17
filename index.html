@@ -168,6 +168,27 @@ nav button span{font-size:11px}
 .cpick{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px;background:#eef5ee;border-radius:14px;padding:14px;color:var(--g)}
 .cpick b{display:block;font-size:28px;color:var(--ink)}.cpick small{color:var(--mute)}
 .cwind{display:flex;align-items:center;gap:14px;font-size:15px}.cwind b{font-size:22px}.cwind .wd{display:flex;align-items:center;gap:4px}
+.cntseg{display:flex;gap:6px;margin:10px 0 4px}.cntseg button{flex:1;padding:8px 4px;border-radius:10px;border:1px solid #d6d2c4;background:#fff;font-size:14px;color:var(--mute)}
+.cntseg button.on{border-color:var(--g);color:var(--g);font-weight:700;background:#eef5ee}
+.ninegrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.ninegrid button{position:relative;padding:20px 6px 14px;border-radius:16px;border:2px solid #d6d2c4;background:#fff;color:var(--ink)}
+.ninegrid button b{display:block;font-size:30px}.ninegrid button small{display:block;font-size:12px;color:var(--mute);min-height:15px}
+.ninegrid button.on{border-color:var(--g);background:#eef5ee}.ninegrid button i{position:absolute;left:8px;top:6px;width:24px;height:24px;border-radius:50%;background:var(--g);color:#fff;font-style:normal;font-weight:700;font-size:14px;line-height:24px}
+.ninesum{text-align:center;color:var(--g);font-weight:700;margin-top:12px}
+.endbtns .btn{display:flex;align-items:center;justify-content:center;gap:6px}
+.btn.fin{background:var(--g)}.btn.danger,.danger{color:var(--red)!important}
+.hrow{border-top:1px solid #eee;padding:8px 0}.hbtn{display:flex;width:100%;justify-content:space-between;align-items:center;border:0;background:none;padding:4px 0;text-align:left;color:var(--ink)}
+.hbtn small{display:block;color:var(--mute);font-size:12px}.hbtn .hs{text-align:right}.hbtn .hs b{font-size:24px}
+.rghead{display:flex;align-items:center;gap:6px;font-size:20px;font-weight:700;color:var(--g)}
+.icbtn.dark{background:#e7e3d6;color:var(--ink)}
+.rgclub{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--g);flex:1}.rgclub select{flex:1}.rgclub .btn{margin:0;display:flex;align-items:center}
+.btn.rgstart{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px;padding:18px}
+.flhead{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;margin-top:12px;color:var(--g)}
+.flrow span{display:flex;flex-direction:column;align-items:center;width:40px;color:var(--g)}.flrow span small{font-size:10px;color:var(--mute)}
+.flrow button{display:flex;align-items:center;justify-content:center;min-height:40px;color:var(--g)}.flrow button b{font-size:15px;color:var(--ink)}
+.flrow button.on{color:#fff}.flrow button.on b{color:#fff}
+.homemini{display:flex;gap:12px}.homemini button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;padding:14px;background:#fff;color:var(--g);font-size:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.homemini button span{color:var(--ink)}
 .gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
 .gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .gps .yd b{display:block;font-size:34px;line-height:1.1}
@@ -193,6 +214,21 @@ nav button span{font-size:11px}
 
 <script>
 const KEY='golf-round-v1';
+// 完成的球局
+let ROUNDS=(()=>{try{return JSON.parse(localStorage.getItem('golf-rounds'))||[]}catch(e){return[]}})();
+function saveRounds(){try{localStorage.setItem('golf-rounds',JSON.stringify(ROUNDS.slice(0,200)))}catch(e){}}
+function endRound(keep){
+  if(keep&&S)ROUNDS.unshift({...S,done:Date.now()}),saveRounds();
+  S=null;try{localStorage.removeItem(KEY)}catch(e){}
+  SHOT=null;try{localStorage.removeItem('golf-shot')}catch(e){}
+  START.step='home';view='start';render();window.scrollTo(0,0);
+  if(keep)avgToast(`${ic('check',28)}<div style="font-size:18px;font-weight:700;margin-top:4px">已儲存</div><div class="hint">到「成績」可以看過去的紀錄</div>`);
+}
+function finishRound(){
+  let n=0;S.players[0].score.forEach(x=>{if(x!=null)n++});
+  confirmBox(`完成並儲存這一場？${n<S.holes?`<div class="hint">還有 ${S.holes-n} 洞沒有記分。</div>`:''}`,()=>endRound(true));
+}
+function abandonRound(){confirmBox('放棄這一場？<div class="hint">這一場的桿數不會保存。</div>',()=>endRound(false))}
 const DEFAULT_PARS=[4,4,3,5,4,4,3,4,5, 4,3,5,4,4,4,3,5,4];
 let S=load()||null;
 let view='start';
@@ -241,6 +277,11 @@ const ICONS={
   camera:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l2-3h4l2 3"/><circle cx="12" cy="13.5" r="3.5"/>',
   back:'<path d="M15 5l-7 7 7 7"/>', target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
   tee:'<path d="M8 6h8M12 6v14"/><circle cx="12" cy="3.5" r="2"/>', grass:'<path d="M4 20c1-4 2-7 2-10M9 20c0-5 1-9 3-12M15 20c0-4-1-8-3-11M20 20c-1-4-2-7-3-9"/>',
+  curveL:'<path d="M15 21c0-8-3-13-9-17"/><path d="M6 4v5M6 4h5"/>', curveR:'<path d="M9 21c0-8 3-13 9-17"/><path d="M18 4v5M18 4h-5"/>',
+  hlow:'<path d="M3 19c6-5 12-5 18 0"/>', hmid:'<path d="M3 19c5-11 13-11 18 0"/>', hhigh:'<path d="M3 19c3-18 15-18 18 0"/>',
+  front:'<circle cx="12" cy="5" r="2.5"/><path d="M12 8v7M8 11h8M12 15l-3 6M12 15l3 6"/>', side:'<circle cx="12" cy="5" r="2.5"/><path d="M12 8l-1 7 3 6M11 15l-3 6M12 10l5 2"/>',
+  speaker:'<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>', mute:'<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>', swap:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   fair:'<path d="M3 20c4-8 14-8 18-16"/><path d="M3 14c4-4 8-5 11-9"/>', play:'<path d="M7 4l13 8-13 8z"/>', plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>'
 };
 function ic(n,sz,extra){return`<svg class="ic ic-${n}" viewBox="0 0 24 24" width="${sz||22}" height="${sz||22}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra||''}>${ICONS[n]||''}</svg>`}
@@ -249,9 +290,12 @@ document.getElementById('nav').innerHTML=[['play','flag','記分'],['map','map',
   .map(([v,i,t])=>`<button data-v="${v}">${ic(i,26)}<span>${t}</span></button>`).join('');
 
 // 洞的編號：一般 1–18，或 27 洞球場的 A／B／C 球道
-const hk=i=>S&&S.nines?S.nines[Math.floor(i/9)]+(i%9+1):String(i+1);      // 存資料用的鍵
-const hs=i=>S&&S.nines?S.nines[Math.floor(i/9)]+(i%9+1):String(i+1);      // 短標籤 A1
-const holeTitle=i=>S&&S.nines?`${S.nines[Math.floor(i/9)]} 球道第 ${i%9+1} 洞`:`第 ${i+1} 洞`;
+// 球道代號：OUT＝1–9 洞、IN＝10–18 洞（一般 18 洞球場）；A／B／C／D＝27、36 洞球場的球道
+const nineLabel=n=>n==='OUT'?'1–9 洞':n==='IN'?'10–18 洞':n+' 球道';
+const holeKey=(nines,i)=>{const n=nines?nines[Math.floor(i/9)]:null;return !n?String(i+1):n==='OUT'?String(i%9+1):n==='IN'?String(i%9+10):n+(i%9+1)};
+const hk=i=>holeKey(S&&S.nines,i);      // 存資料用的鍵
+const hs=i=>holeKey(S&&S.nines,i);      // 短標籤，例如 A1、12
+const holeTitle=i=>{const n=S&&S.nines?S.nines[Math.floor(i/9)]:null;return n&&n!=='OUT'&&n!=='IN'?`${n} 球道第 ${i%9+1} 洞`:`第 ${hk(i)} 洞`};
 function vsPar(n){return n===0?'E':(n>0?'+'+n:''+n)}
 function totals(p,from=0,to=S.holes){
   let s=0,par=0,played=0;
@@ -272,7 +316,8 @@ function render(){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
   if(S){$('#title').textContent='⛳ '+(S.course||'高爾夫記分卡');
     const p=S.players[0],t=totals(p);$('#sub').textContent=S.date+(S.tee?'・'+S.tee+' tee':'')+'・'+p.name+' '+(t.played?t.s+'桿 ('+vsPar(t.diff)+')':'尚未記分');}
-  if(!S && ['play','map','card'].includes(view)) view='setup';
+  if(!S){$('#title').textContent='⛳ 高爾夫';$('#sub').textContent=''}
+  if(!S && ['play','map'].includes(view)) view='setup';
   if(S){loadGreens();loadOSMCache();if(SAT.map)drawOSMLayer()}
   ({setup:renderSetup,play:renderPlay,map:renderMap,card:renderCard,bag:renderBag,caddie:renderCaddie,start:renderStart,range:()=>window.renderRange?renderRange():($('#app').innerHTML='<div class="card">練習場模式載入失敗，請重新整理。</div>')})[view]();
 }
@@ -280,7 +325,7 @@ function render(){
 // ---------- 設定（⚙︎）：這一場的資訊、球員 ----------
 function renderSetup(){
   if(!S){view='start';START.step='home';return render()}
-  const lab=S.nines?S.nines.join(' → ')+' 球道':`${S.holes} 洞`;
+  const lab=S.nines?S.nines.map(nineLabel).join(' → '):`${S.holes} 洞`;
   $('#app').innerHTML=`<div class="card"><b>這一場</b>
     <div style="margin-top:6px">⛳ ${esc(S.course||'')}・${lab}・${S.date}</div>
     <label>發球台</label><div class="parsel">${TEES.map(([t])=>`<button data-stee="${t}" class="${S.tee===t?'on':''}">${t} tee</button>`).join('')}</div>
@@ -290,8 +335,12 @@ function renderSetup(){
     ${S.players.length<4?`<button class="btn ghost" id="pAdd">＋ 幫別人記桿數</button>`:''}
     <div class="hint">第一位是你自己。最多 4 位。</div>
   </div>
-  <button class="btn" id="setBack">回到記分</button>
-  <button class="btn ghost" id="setHome">回到首頁（這一場的紀錄會保留）</button>`;
+  <div class="endbtns">
+    <button class="btn" id="setBack">${ic('flag',20)} 回到記分</button>
+    <button class="btn fin" id="setFin">${ic('check',20)} 完成並儲存</button>
+    <button class="btn ghost" id="setHome">${ic('back',20)} 先回首頁，之後再繼續</button>
+    <button class="btn ghost danger" id="setQuit">${ic('x',20)} 放棄這一場</button>
+  </div>`;
   document.querySelectorAll('[data-stee]').forEach(b=>b.onclick=()=>{S.tee=b.dataset.stee;save();render()});
   document.querySelectorAll('[data-pname]').forEach(i=>i.onchange=()=>{S.players[+i.dataset.pname].name=i.value.trim()||(+i.dataset.pname?'球友':'我');save();render()});
   document.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=()=>confirmBox(`要移除 ${esc(S.players[+b.dataset.pdel].name)} 嗎？他的桿數也會一起刪除。`,()=>{S.players.splice(+b.dataset.pdel,1);save();render()}));
@@ -299,6 +348,7 @@ function renderSetup(){
     const ins=document.querySelectorAll('[data-pname]');const last=ins[ins.length-1];last.focus();last.select()};
   $('#setBack').onclick=()=>{view='play';render();window.scrollTo(0,0)};
   $('#setHome').onclick=()=>{START.step='home';view='start';render();window.scrollTo(0,0)};
+  $('#setFin').onclick=finishRound;$('#setQuit').onclick=abandonRound;
 }
 
 function renderPlay(){
@@ -349,8 +399,28 @@ function renderPlay(){
   mountSat('satSlot','hole','300px');
 }
 
+// 過去的成績
+function roundTotals(R,p,from=0,to=R.holes){let s=0,par=0,n=0;for(let i=from;i<to;i++){if(p.score[i]!=null){s+=p.score[i];par+=R.pars[i];n++}}return{s,par,diff:s-par,n}}
+let openRound=null;
+function historyHTML(){
+  if(!ROUNDS.length)return S?'':`<div class="card" style="text-align:center;color:var(--mute)">${ic('trophy',40)}<div style="margin-top:6px">還沒有完成的球局</div></div>`;
+  return`<div class="card"><b>${ic('trophy',20)} 過去的成績</b>${ROUNDS.map((R,k)=>{const p=R.players[0],t=roundTotals(R,p),op=openRound===k;
+    const lab=R.nines?R.nines.map(nineLabel).join(' → '):R.holes+' 洞';
+    return`<div class="hrow"><button class="hbtn" data-hr="${k}"><span><b>${esc(R.course||'')}</b><small>${R.date}${R.tee?'・'+R.tee+' tee':''}・${lab}</small></span>
+      <span class="hs"><b>${t.n?t.s:'—'}</b><small>${t.n?vsPar(t.diff):''}</small></span></button>
+      ${op?`<div class="tablewrap" style="margin-top:6px"><table>${[0,9].filter(a=>a<R.holes).map(a=>{const idx=[...Array(9).keys()].map(x=>x+a);
+        return`<tr><th class="nm">洞</th>${idx.map(i=>`<th>${holeKey(R.nines,i)}</th>`).join('')}<th>計</th></tr>
+        <tr><td class="nm">Par</td>${idx.map(i=>`<td>${R.pars[i]}</td>`).join('')}<td class="sub">${idx.reduce((x,i)=>x+R.pars[i],0)}</td></tr>
+        ${R.players.map(q=>`<tr><td class="nm">${esc(q.name)}</td>${idx.map(i=>`<td><span class="sc ${cls(q.score[i],R.pars[i])}">${q.score[i]??''}</span></td>`).join('')}<td class="sub">${roundTotals(R,q,a,a+9).s||''}</td></tr>`).join('')}`}).join('')}</table></div>
+        <button class="btn ghost sm danger" data-hdel="${k}" style="margin-top:6px">${ic('x',14)} 刪除這筆</button>`:''}</div>`}).join('')}</div>`;
+}
+function bindHistory(){
+  document.querySelectorAll('[data-hr]').forEach(b=>b.onclick=()=>{openRound=openRound===+b.dataset.hr?null:+b.dataset.hr;render()});
+  document.querySelectorAll('[data-hdel]').forEach(b=>b.onclick=()=>confirmBox('刪除這筆成績？',()=>{ROUNDS.splice(+b.dataset.hdel,1);saveRounds();openRound=null;render()}));
+}
 function renderCard(){
-  const nn=i=>S.nines?S.nines[i]+' 球道':(i?'後九':'前九');
+  if(!S){$('#app').innerHTML=historyHTML();bindHistory();return}
+  const nn=i=>S.nines?nineLabel(S.nines[i]):(i?'後九':'前九');
   const segs=S.holes==18?[[0,9,nn(0)],[9,18,nn(1)]]:[[0,9,nn(0)]];
   let html='';
   segs.forEach(([a,b,nm])=>{
@@ -365,10 +435,11 @@ function renderCard(){
     return `<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${esc(p.name)}</span><span><b style="font-size:20px">${t.played?t.s:'—'}</b> ${t.played?'（'+vsPar(t.diff)+'，'+t.played+' 洞）':''}</span></div>`}).join('')}
     <button class="btn ghost" id="copy">複製成績文字</button><div class="copied" id="cp"></div>
     <div class="hint">○ 博蒂　◎ 老鷹　□ 柏忌　▣ 雙柏忌以上</div></div>`;
-  $('#app').innerHTML=html+statsHTML();
+  $('#app').innerHTML=html+statsHTML()+`<button class="btn fin" id="cardFin" style="margin:4px 0 14px">${ic('check',20)} 完成並儲存這一場</button>`+historyHTML();
+  $('#cardFin').onclick=finishRound;bindHistory();
   $('#copy').onclick=async()=>{
     const txt=`⛳ ${S.course||'高爾夫'} ${S.date}\n`+S.players.map(p=>{const t=totals(p),f=totals(p,0,9),b=totals(p,9,18);
-      return `${p.name}：${t.s} 桿（${vsPar(t.diff)}）`+(S.holes==18?` ${S.nines?S.nines[0]:'前九'} ${f.s}／${S.nines?S.nines[1]:'後九'} ${b.s}`:'')}).join('\n');
+      return `${p.name}：${t.s} 桿（${vsPar(t.diff)}）`+(S.holes==18?` ${nn(0)} ${f.s}／${nn(1)} ${b.s}`:'')}).join('\n');
     try{await navigator.clipboard.writeText(txt);$('#cp').textContent='已複製！'}catch(e){$('#cp').innerHTML='<textarea style="width:100%;height:90px">'+esc(txt)+'</textarea>長按上方文字即可複製'}
   };
 }
@@ -948,14 +1019,15 @@ function drawNear(){
     el.querySelectorAll('[data-near]').forEach(b=>b.onclick=()=>pickCourse(START.near[+b.dataset.near]));return}
   el.innerHTML=`<div class="hint">${START.near?'附近 25 公里內找不到球場資料，請用上面的搜尋。':START.nearErr?'暫時找不到附近球場，請確認有網路，或用上面的搜尋。':START.nearBusy?'正在找附近的球場⋯':G.err?G.err:'GPS 定位中⋯（請允許使用位置）'}</div>`;
 }
-function pickCourse(c){START.course={name:c.name,lat:c.lat,lon:c.lon};START.front='N';START.back='N';goStep('nines')}
+let CNINES=(()=>{try{return JSON.parse(localStorage.getItem('golf-course-nines'))||{}}catch(e){return{}}})();
+const nineSet=n=>n===2?['OUT','IN']:['A','B','C','D'].slice(0,n);
+function setCnt(n){START.cnt=n;START.picks=nineSet(n).slice(0,2);CNINES[START.course.name]=n;try{localStorage.setItem('golf-course-nines',JSON.stringify(CNINES))}catch(e){}}
+function pickCourse(c){START.course={name:c.name,lat:c.lat,lon:c.lon};const n=CNINES[c.name]||2;START.cnt=n;START.picks=nineSet(n).slice(0,2);goStep('nines')}
 function goStep(s){START.step=s;render();window.scrollTo(0,0)}
-const NEXTL={A:'B',B:'C',C:'A'};
 const TEES=[['紅','#d64541','#fff'],['白','#ffffff','#222'],['藍','#2f6fd6','#fff']];
 function startRound(tee){
   const c=START.course,me=S&&S.players[0]?S.players[0].name:'我';
-  const f=START.front,b=START.back;
-  const holes=b==='X'?9:18,nines=f==='N'?null:(b==='X'?[f]:[f,b]);
+  const nines=START.picks.slice(0,2),holes=nines.length*9;
   newRound(c.name,[me],holes,nines);S.tee=tee;save();rememberCourse(c);
   loadGreens();if(c.lat!=null&&!GREENS.center){GREENS.center={lat:c.lat,lon:c.lon};saveGreens()}
   START.step='home';view='play';render();window.scrollTo(0,0);
@@ -972,10 +1044,13 @@ function renderStart(){
       <button class="homecard" id="stPlay">${ic('flag',76)}<b>下場</b></button>
       <button class="homecard" id="stRange">${ic('golfer',76)}<b>練習場</b></button>
       ${S?`<button class="contcard" id="stCont">${ic('back',22)}<span><b>${esc(S.course||'')}</b><small>${S.tee?S.tee+' tee・':''}${hs(S.cur)}・${done} 洞</small></span></button>`:''}
+      <div class="homemini"><button id="stHist">${ic('trophy',26)}<span>成績</span></button><button id="stBag">${ic('bag',26)}<span>球桿</span></button></div>
     </div>`;
     $('#stPlay').onclick=()=>goStep('course');
     $('#stRange').onclick=()=>{view='range';render();window.scrollTo(0,0)};
     if(S)$('#stCont').onclick=()=>{view='play';render();window.scrollTo(0,0)};
+    $('#stHist').onclick=()=>{view='card';render();window.scrollTo(0,0)};
+    $('#stBag').onclick=()=>{view='bag';render();window.scrollTo(0,0)};
     return;
   }
   // ② 選球場
@@ -999,26 +1074,26 @@ function renderStart(){
     drawNear();if(G.pos)fetchNear(G.pos);
     return;
   }
-  // ③ 前九、後九打哪個球道
+  // ③ 打哪個球道：照打的順序點選（第一個＝前九，第二個＝後九；只點一個＝只打 9 洞）
   if(st==='nines'){
-    const f=START.front,b=START.back;
-    const fOpts=[['N','1–9 洞'],['A','A 球道'],['B','B 球道'],['C','C 球道']];
-    const bOpts=f==='N'?[['N','10–18 洞'],['X','不打後九']]:[...['A','B','C'].filter(x=>x!==f).map(x=>[x,x+' 球道']),['X','不打後九']];
+    const set=nineSet(START.cnt),pk=START.picks;
     $('#app').innerHTML=`<div class="card start">${stepHead(2,'打哪個球道？')}
       <div style="color:var(--mute);margin-top:-4px">⛳ ${esc(START.course.name)}</div>
-      <label>前九</label><div class="optgrid">${fOpts.map(([v,t])=>`<button data-front="${v}" class="${f===v?'on':''}">${t}</button>`).join('')}</div>
-      <label>後九</label><div class="optgrid">${bOpts.map(([v,t])=>`<button data-back="${v}" class="${b===v?'on':''}">${t}</button>`).join('')}</div>
-            <button class="btn" id="stNext" style="font-size:18px;padding:16px">下一步</button>
+      <div class="cntseg">${[[2,'18 洞'],[3,'A B C'],[4,'A B C D']].map(([n,t])=>`<button data-cnt="${n}" class="${START.cnt===n?'on':''}">${t}</button>`).join('')}</div>
+      <div class="ninegrid">${set.map(v=>{const k=pk.indexOf(v);return`<button data-nine="${v}" class="${k>=0?'on':''}">${k>=0?`<i>${k+1}</i>`:''}<b>${v==='OUT'?'1–9':v==='IN'?'10–18':v}</b><small>${k===0?'前九':k===1?'後九':''}</small></button>`}).join('')}</div>
+      <div class="ninesum">${pk.length?pk.map(nineLabel).join(' → ')+`・${pk.length*9} 洞`:'請點選球道'}</div>
+      <button class="btn" id="stNext" style="font-size:18px;padding:16px" ${pk.length?'':'disabled'}>下一步</button>
     </div>`;
     $('#stPrev').onclick=()=>goStep('course');
-    document.querySelectorAll('[data-front]').forEach(x=>x.onclick=()=>{START.front=x.dataset.front;START.back=START.front==='N'?'N':NEXTL[START.front];render()});
-    document.querySelectorAll('[data-back]').forEach(x=>x.onclick=()=>{START.back=x.dataset.back;render()});
-    $('#stNext').onclick=()=>goStep('tee');
+    document.querySelectorAll('[data-cnt]').forEach(x=>x.onclick=()=>{setCnt(+x.dataset.cnt);render()});
+    document.querySelectorAll('[data-nine]').forEach(x=>x.onclick=()=>{const v=x.dataset.nine,k=pk.indexOf(v);
+      if(k>=0)pk.splice(k,1);else if(pk.length<2)pk.push(v);else pk[1]=v;render()});
+    $('#stNext').onclick=()=>{if(pk.length)goStep('tee')};
     return;
   }
   // ④ 發球台
   if(st==='tee'){
-    const f=START.front,b=START.back,lab=f==='N'?(b==='X'?'1–9 洞':'1–18 洞'):(b==='X'?`${f} 球道`:`${f} → ${b} 球道`);
+    const lab=START.picks.map(nineLabel).join(' → ');
     $('#app').innerHTML=`<div class="card start">${stepHead(3,'打哪個發球台？')}
       <div style="color:var(--mute);margin-top:-4px">⛳ ${esc(START.course.name)}・${lab}</div>
       ${TEES.map(([t,bg,fg])=>`<button class="teechoice" data-tee="${t}"><span class="dot" style="background:${bg};color:${fg}">●</span><b>${t} tee</b></button>`).join('')}

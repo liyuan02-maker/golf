@@ -202,7 +202,7 @@ function nearest(arr,t){let best=null,bd=1e9;for(const x of arr){const d=Math.ab
 async function startCam(){
   RG.err='';RG.loading=true;renderRange();
   try{
-    const pr=loadPose(m=>{const e=document.getElementById('rgLoad');if(e)e.textContent=m});
+    const pr=loadPose(m=>{const e=document.getElementById('rgLoad');if(e){e.open=true;e.innerHTML='<summary>ⓘ</summary>'+m}});
     RG.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:RG.cam,width:{ideal:720},height:{ideal:1280},frameRate:{ideal:60}}});
     if(!RG.vid){RG.vid=document.createElement('video');RG.vid.playsInline=true;RG.vid.muted=true;RG.vid.setAttribute('playsinline','');RG.cv=document.createElement('canvas')}
     RG.vid.srcObject=RG.stream;await RG.vid.play().catch(()=>{});
@@ -282,12 +282,15 @@ function rangeSummaryHTML(){
     ${fl.length<5?`<div class="hint">每球打完點一下球路，累積 5 球以上會分析球路問題。</div>`:''}
   </div>`;
 }
-function swingCardHTML(s,i,n){
+function swingCardHTML(s,idx,n){const i=idx;
   const m=s.m,chips=s.view==='face'?[
       ['上桿臀部側移',`${m.hipBack>0?'+':''}${m.hipBack} cm`],['擊球重心移動',`${m.hipImp>0?'+':''}${m.hipImp} cm`],['擊球頭部高度',`${m.headRise>0?'+':''}${m.headRise} cm`],
       ['肩膀轉動（估）',`${m.shTurn}°`],['頂點前手臂',`${m.leadArm}°`]]:
     [['脊椎角度',`${m.spineAddr}° → ${m.spineImp}°`],['臀部往球移動',`${m.hipThrust>0?'+':''}${m.hipThrust} cm`],['擊球頭部高度',`${m.headRise>0?'+':''}${m.headRise} cm`],['頂點前手臂',`${m.leadArm}°`]];
-  const fb=(k)=>`<div class="flrow"><span>${{start:'起飛',curve:'彎曲',contact:'擊球',height:'高度'}[k]}</span>${Object.entries(FL[k]).map(([v,nm])=>`<button data-fl="${i}:${k}:${v}" class="${s.fl&&s.fl[k]===v?'on':''}">${nm}</button>`).join('')}</div>`;
+  const FI={start:[['L','left',''],['C','arrow',''],['R','right','']],curve:[['L','curveL',''],['S','arrow',''],['R','curveR','']],
+    contact:[['T','','薄'],['G','check',''],['F','','厚']],height:[['L','hlow',''],['M','hmid',''],['H','hhigh','']]};
+  const FH={start:['arrow','起飛'],curve:['curveR','彎曲'],contact:['club','擊球'],height:['hhigh','高度']};
+  const fb=(k)=>`<div class="flrow"><span>${ic(FH[k][0],16)}<small>${FH[k][1]}</small></span>${FI[k].map(([v,i,t])=>`<button data-fl="${idx}:${k}:${v}" class="${s.fl&&s.fl[k]===v?'on':''}" aria-label="${FL[k][v]}">${i?ic(i,22):''}${t?`<b>${t}</b>`:''}</button>`).join('')}</div>`;
   return`<div class="card swing">
     <div class="row" style="justify-content:space-between"><b>第 ${n} 球</b><span style="font-size:13px;color:var(--mute)">${esc(clubName(s.club))}・${s.view==='face'?'正面':'後方'}・${new Date(s.t).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span></div>
     <div class="tempo"><div><b>${s.back}</b><span>上桿（秒）</span></div><div><b>${s.down}</b><span>下桿（秒）</span></div><div class="hi"><b>${s.ratio} : 1</b><span>節奏</span></div></div>
@@ -295,7 +298,7 @@ function swingCardHTML(s,i,n){
     ${s.rep?`<div class="rpwrap"><canvas class="rp" id="rp${i}"></canvas><div class="row"><button class="btn ghost sm" data-rp="${i}:0.25">▶ 慢動作</button><button class="btn ghost sm" data-rp="${i}:1">▶ 原速</button></div></div>`:''}
     <div class="chips">${chips.map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
     <div class="advbox">${s.tips.map(t=>`<div class="adv ${t.lv}">${t.lv==='warn'?'⚠️':t.lv==='ok'?'✅':'ℹ️'} ${t.t}</div>`).join('')}</div>
-    <div style="font-size:13px;font-weight:700;margin-top:12px">這球的球路</div>
+    <div class="flhead">${ic('target',16)} 球路</div>
     ${['start','curve','contact','height'].map(fb).join('')}
   </div>`;
 }
@@ -322,29 +325,42 @@ function playRep(i,speed){
 }
 
 const VIEWHELP={
-  face:'正面：手機放在你正前方約 3 公尺、腰的高度，鏡頭對著你的胸口。整個人（頭到腳、加上揮桿的範圍）都要在畫面裡。',
-  dtl:'後方：手機放在你身後、沿著目標線延長約 3 公尺，腰到胸口的高度。鏡頭看向目標，整個人都要在畫面裡。'};
+  face:'正面：手機放在你正前方約 3 公尺、腰的高度，整個人（含揮桿範圍）都要入鏡。',
+  dtl:'後方：手機放在你身後、沿目標線延長約 3 公尺，腰到胸口的高度，整個人都要入鏡。'};
+const clubOpts=()=>BAG.clubs.map(c=>`<option value="${c.id}" ${RG.club===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+// 在練習場直接新增球桿（加進球袋）
+function addClubRange(){
+  $('#modalBody').innerHTML=`<div style="text-align:center;color:var(--g)">${ic('bag',36)}</div>
+    <label>球桿名稱</label><input id="ncName" placeholder="例如：3 號混血">
+    <label>平常打多遠（${BAG.unit}，可不填）</label><input id="ncEst" type="number" inputmode="numeric">
+    <div class="row"><button class="btn ghost" id="mNo">${ic('x',18)}</button><button class="btn" id="mYes" style="flex:3">${ic('plus',18)} 加入球袋</button></div>`;
+  $('#modal').classList.add('show');setTimeout(()=>$('#ncName').focus(),50);
+  $('#mNo').onclick=()=>$('#modal').classList.remove('show');
+  $('#mYes').onclick=()=>{const n=$('#ncName').value.trim();if(!n)return;const id='c'+Date.now();
+    BAG.clubs.push({id,name:n,est:+$('#ncEst').value||null,shots:[]});saveBag();RG.club=id;saveRG();$('#modal').classList.remove('show');
+    if(RG.on){const sel=document.getElementById('rgClub2');if(sel)sel.innerHTML=clubOpts()}else renderRange()};
+}
 function renderRange(){
   document.body.classList.add('starting');
-  const opts=(k,arr)=>`<div class="parsel">${arr.map(([v,t])=>`<button data-rg="${k}:${v}" class="${RG[k]===v?'on':''}">${t}</button>`).join('')}</div>`;
   if(!RG.club&&BAG.clubs.length)RG.club=(BAG.clubs.find(c=>/7/.test(c.name))||BAG.clubs[0]).id;
+  const seg=(k,arr)=>`<div class="icrow">${arr.map(([v,i,t])=>`<button data-rg="${k}:${v}" class="${RG[k]===v?'on':''}">${ic(i,24)}<small>${t}</small></button>`).join('')}</div>`;
+  const clubRow=id=>`<div class="rgclub">${ic('club',24)}<select id="${id}">${clubOpts()}</select><button class="btn sm" id="rgAddClub" aria-label="新增球桿">${ic('plus',20)}</button></div>`;
   $('#app').innerHTML=`<div class="card">
-    <div class="row" style="justify-content:space-between"><b style="font-size:18px">🏌️ 練習場模式</b><button class="btn ghost sm" id="rgExit" style="margin:0">離開</button></div>
+    <div class="row" style="justify-content:space-between"><span class="rghead">${ic('golfer',28)} 練習場</span><button class="icbtn dark" id="rgExit" aria-label="離開">${ic('x',20)}</button></div>
     ${RG.on?`<div class="rgcam" id="rgCam"><div class="rgstat idle" id="rgStat">請站到畫面中</div></div>
-      <div class="row" style="margin-top:8px"><select id="rgClub2" style="flex:1">${BAG.clubs.map(c=>`<option value="${c.id}" ${RG.club===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
-      <button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">停止</button></div>
-      <div class="hint">揮完一桿會自動分析，結果在下面。換球桿時直接改上面的選單。</div>`:
-    `<label>拍攝角度</label>${opts('view',[['face','正面'],['dtl','後方']])}
+      <div class="row" style="margin-top:8px">${clubRow('rgClub2')}<button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">${ic('stop',20)}</button></div>`:
+    `${seg('view',[['face','front','正面'],['dtl','side','後方']])}
     <div class="hint" style="margin-top:6px">${VIEWHELP[RG.view]}</div>
-    <label>慣用手</label>${opts('hand',[['R','右手打'],['L','左手打']])}
-    <label>練習的球桿</label><select id="rgClub">${BAG.clubs.map(c=>`<option value="${c.id}" ${RG.club===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
-    <label>鏡頭</label>${opts('cam',[['environment','後鏡頭'],['user','前鏡頭（自拍）']])}
-    <label>語音播報結果</label>${opts('voice',[[true,'開'],[false,'關']])}
+    ${seg('hand',[['R','right','右打'],['L','left','左打']])}
+    ${clubRow('rgClub')}
+    ${seg('cam',[['environment','camera','後鏡頭'],['user','swap','前鏡頭']])}
+    ${seg('voice',[[true,'speaker','語音開'],[false,'mute','語音關']])}
     ${RG.err?`<div class="adv warn" style="margin-top:10px">${RG.err}</div>`:''}
-    <button class="btn" id="rgStart" ${RG.loading?'disabled':''} style="font-size:18px;padding:16px">${RG.loading?'準備中⋯':'📷 開始錄影分析'}</button>
-    <div class="hint" id="rgLoad">${RG.loading?'正在開啟相機與分析模型⋯':'第一次使用需要下載姿勢分析模型，請在有網路的地方開啟。影像只在你的手機上分析，不會上傳。'}</div>`}
+    <button class="btn rgstart" id="rgStart" ${RG.loading?'disabled':''}>${ic('camera',28)} ${RG.loading?'準備中⋯':'開始'}</button>
+    <details class="hint" id="rgLoad"><summary>ⓘ</summary>${RG.loading?'正在開啟相機與分析模型⋯':'第一次使用需要下載姿勢分析模型（約 10 MB），請在有網路的地方開啟。影像只在你的手機上分析，不會上傳。'}</details>`}
   </div>
   <div id="rgSum"></div><div id="rgList"></div>`;
+  $('#rgAddClub').onclick=addClubRange;
   if(RG.on){const box=$('#rgCam');box.prepend(RG.cv);box.prepend(RG.vid);RG.vid.play().catch(()=>{});
     $('#rgStop').onclick=()=>stopCam();$('#rgClub2').onchange=e=>{RG.club=e.target.value;saveRG()}}
   else{
