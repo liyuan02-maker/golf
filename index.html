@@ -94,6 +94,11 @@ td.sub{background:#f7f5ee;font-weight:700}
 .hzrow b{font-size:17px}
 .wxrow{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.07);border-radius:10px;padding:8px 10px;margin-top:6px}
 .pin.hz{background:#fff;border-color:#333;font-size:14px}
+body.starting nav{display:none}
+.start h2{margin:4px 0 10px;font-size:22px;color:var(--g)}
+.sthead{font-weight:700;margin:18px 0 4px;color:var(--g)}
+.btn.course{display:flex;flex-direction:column;align-items:flex-start;text-align:left;font-weight:600;margin-top:8px}
+.btn.course small{font-weight:400;font-size:12px;color:var(--mute);margin-top:2px}
 .gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
 .gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .gps .yd b{display:block;font-size:34px;line-height:1.1}
@@ -125,7 +130,7 @@ td.sub{background:#f7f5ee;font-weight:700}
 const KEY='golf-round-v1';
 const DEFAULT_PARS=[4,4,3,5,4,4,3,4,5, 4,3,5,4,4,4,3,5,4];
 let S=load()||null;
-let view=S?'play':'setup';
+let view='start';
 
 function load(){try{return JSON.parse(localStorage.getItem(KEY))}catch(e){return null}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
@@ -208,12 +213,13 @@ function label(score,par){
 }
 
 function render(){
+  document.body.classList.toggle('starting',view==='start');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
   if(S){$('#title').textContent='⛳ '+(S.course||'高爾夫記分卡');
     const p=S.players[0],t=totals(p);$('#sub').textContent=S.date+'・'+p.name+' '+(t.played?t.s+'桿 ('+vsPar(t.diff)+')':'尚未記分');}
   if(!S && ['play','map','card'].includes(view)) view='setup';
   if(S){loadMaps();loadGreens();loadOSMCache();if(SAT.map)drawOSMLayer()}
-  ({setup:renderSetup,play:renderPlay,map:renderMap,card:renderCard,bag:renderBag,caddie:renderCaddie})[view]();
+  ({setup:renderSetup,play:renderPlay,map:renderMap,card:renderCard,bag:renderBag,caddie:renderCaddie,start:renderStart})[view]();
 }
 
 function renderSetup(){
@@ -496,7 +502,7 @@ function startGPS(){
   G.on=true;G.err=null;
   try{G.id=navigator.geolocation.watchPosition(p=>{
       G.pos={lat:p.coords.latitude,lon:p.coords.longitude};G.acc=Math.round(p.coords.accuracy);G.err=null;
-      loadWeather(G.pos);if(S&&!OSM&&!OSMST.tried[S.course])fetchOSM(G.pos);
+      loadWeather(G.pos);if(view==='start'){fetchNear(G.pos)}else if(S&&!OSM&&!OSMST.tried[S.course])fetchOSM(G.pos);
       if(Date.now()-G.last>2500){G.last=Date.now();drawGPS()}},
     e=>{if(e.code!==1&&G.pos){G.err='GPS 訊號不穩，顯示的是最後一次的位置。'}else G.err=e.code===1?'沒有定位權限。請到手機設定允許這個網頁使用位置；在 Claude 的預覽頁面裡無法使用 GPS，請用你自己的網址開啟。':'暫時抓不到 GPS 訊號，請到空曠的地方再試一次。';drawGPS()},
     {enableHighAccuracy:true,maximumAge:2000,timeout:20000})}catch(e){G.err='這個環境不能使用 GPS。'}
@@ -603,7 +609,7 @@ function compass(brg){
 function askCaddie(dM,brg){CD.dist=toU(dM);CD.elev=0;const w=windFor(brg);if(w)CD.wind=w.lvl;CD.brg=brg;view='caddie';render();window.scrollTo(0,0)}
 
 function drawGPS(){
-  drawSat();drawSatInfo();
+  drawSat();drawSatInfo();if(view==='start')drawNear();
   const box=$('#gpsBox');if(!box||!S)return;
   const h=S.cur,u=BAG.unit;
   if(!G.on){box.innerHTML=`<div class="gps"><b>📡 GPS 測距</b><div style="font-size:13px;opacity:.8;margin-top:4px">顯示到果嶺前緣、障礙物的距離，還有風向與方向。</div>${G.err?`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`:''}<button class="btn hi" id="gpsOn">開啟 GPS</button></div>`;$('#gpsOn').onclick=startGPS;return}
@@ -785,6 +791,72 @@ function drawSatInfo(){
   }
 }
 
+// ---------- 開場：今天打哪個球場？ ----------
+const START={step:'course',course:null,near:null,nearBusy:false,nearErr:false,holes:18};
+let COURSES=(()=>{try{return JSON.parse(localStorage.getItem('golf-courses'))||[]}catch(e){return[]}})();
+function rememberCourse(c){COURSES=[{...c,t:Date.now()},...COURSES.filter(x=>x.name!==c.name)].slice(0,10);try{localStorage.setItem('golf-courses',JSON.stringify(COURSES))}catch(e){}}
+async function fetchNear(p){
+  if(START.nearBusy||START.near)return;START.nearBusy=true;drawNear();
+  const a=`(around:25000,${p.lat.toFixed(4)},${p.lon.toFixed(4)})`;
+  const q=`[out:json][timeout:20];(way["leisure"="golf_course"]${a};relation["leisure"="golf_course"]${a};);out center tags;`;
+  try{const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    const js=await r.json();const seen={};
+    START.near=js.elements.filter(e=>e.center&&e.tags&&(e.tags['name:zh']||e.tags.name)).map(e=>({name:e.tags['name:zh']||e.tags.name,lat:e.center.lat,lon:e.center.lon,d:distM(p,{lat:e.center.lat,lon:e.center.lon})}))
+      .sort((a,b)=>a.d-b.d).filter(x=>seen[x.name]?false:(seen[x.name]=1)).slice(0,6);
+  }catch(e){START.nearErr=true}
+  START.nearBusy=false;drawNear();
+}
+function drawNear(){
+  const el=document.getElementById('stNear');if(!el)return;
+  if(START.near&&START.near.length){el.innerHTML=START.near.map((c,i)=>`<button class="btn ghost course" data-near="${i}"><span>${esc(c.name)}</span><small>${c.d<1000?Math.round(c.d)+' 公尺':(c.d/1000).toFixed(1)+' 公里'}</small></button>`).join('');
+    el.querySelectorAll('[data-near]').forEach(b=>b.onclick=()=>pickCourse(START.near[+b.dataset.near]));return}
+  el.innerHTML=`<div class="hint">${START.near?'附近 25 公里內找不到球場資料，請用上面的搜尋。':START.nearErr?'暫時找不到附近球場，請確認有網路，或用上面的搜尋。':START.nearBusy?'正在找附近的球場⋯':G.err?G.err:'GPS 定位中⋯（請允許使用位置）'}</div>`;
+}
+function pickCourse(c){START.course={name:c.name,lat:c.lat,lon:c.lon};START.step='players';render();window.scrollTo(0,0)}
+function renderStart(){
+  if(START.step==='players'&&START.course){
+    const names=S?S.players.map(p=>p.name):['我'];
+    $('#app').innerHTML=`<div class="card start"><div style="font-size:13px;color:var(--mute)">今天的球場</div><h2>⛳ ${esc(START.course.name)}</h2>
+      <label>球員（最多 4 位）</label>
+      ${[0,1,2,3].map(i=>`<input class="pn" style="margin-bottom:6px" placeholder="球員 ${i+1}${i?'（選填）':''}" value="${esc(names[i]||'')}">`).join('')}
+      <label>洞數</label><div class="parsel">${[18,9].map(n=>`<button data-holes="${n}" class="${START.holes===n?'on':''}">${n} 洞</button>`).join('')}</div>
+      <button class="btn" id="stStart" style="font-size:18px;padding:16px">開始打球</button>
+      <button class="btn ghost" id="stBack">換一個球場</button></div>`;
+    document.querySelectorAll('[data-holes]').forEach(b=>b.onclick=()=>{START.holes=+b.dataset.holes;document.querySelectorAll('[data-holes]').forEach(x=>x.classList.toggle('on',x===b))});
+    $('#stBack').onclick=()=>{START.step='course';render()};
+    $('#stStart').onclick=()=>{
+      const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);if(!ns.length)ns.push('我');
+      const c=START.course;newRound(c.name,ns,START.holes);rememberCourse(c);
+      loadGreens();if(c.lat!=null&&!GREENS.center){GREENS.center={lat:c.lat,lon:c.lon};saveGreens()}
+      view='play';render();window.scrollTo(0,0);
+      if(!G.on)startGPS();
+      if(!OSM&&GREENS.center)fetchOSM(GREENS.center);
+    };
+    return;
+  }
+  let done=0;if(S)S.players[0].score.forEach(x=>{if(x!=null)done++});
+  $('#app').innerHTML=`<div class="card start"><h2>⛳ 今天打哪個球場？</h2>
+    ${S?`<button class="btn" id="stCont">繼續 ${esc(S.course||'上一場')}<br><small style="font-weight:400;opacity:.85">${S.date}・已記 ${done} 洞</small></button>`:''}
+    <label>搜尋球場</label>
+    <div class="row"><input id="stQ" placeholder="例如：林口、美麗華、揚昇"><button class="btn sm" id="stGo" style="margin:0;white-space:nowrap">搜尋</button></div>
+    <div id="stRes"></div>
+    <div class="sthead">📍 附近的球場</div><div id="stNear"></div>
+    ${COURSES.length?`<div class="sthead">🕘 最近打過</div>${COURSES.map((c,i)=>`<button class="btn ghost course" data-hist="${i}"><span>${esc(c.name)}</span></button>`).join('')}`:''}
+  </div>`;
+  if(S)$('#stCont').onclick=()=>{view='play';render();window.scrollTo(0,0)};
+  document.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>pickCourse(COURSES[+b.dataset.hist]));
+  const go=async()=>{const q=$('#stQ').value.trim();if(!q)return;const out=$('#stRes');out.innerHTML='<div class="hint">搜尋中⋯</div>';
+    let js=[];try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=zh-TW&q='+encodeURIComponent(q));js=await r.json()}catch(e){}
+    out.innerHTML=js.map((x,i)=>`<button class="btn ghost course" data-res="${i}"><span>${esc(x.name||x.display_name.split(',')[0])}</span><small>${esc(x.display_name.split(',').slice(1,3).join(','))}</small></button>`).join('')+
+      `<button class="btn ghost course" id="stManual"><span>直接用「${esc(q)}」當球場名稱</span><small>${js.length?'':'沒有找到地圖上的球場，'}之後可以在地圖上自己找位置</small></button>`;
+    out.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{const x=js[+b.dataset.res];pickCourse({name:x.name||x.display_name.split(',')[0],lat:+x.lat,lon:+x.lon})});
+    $('#stManual').onclick=()=>pickCourse({name:q,lat:null,lon:null});
+  };
+  $('#stGo').onclick=go;$('#stQ').onkeydown=e=>{if(e.key==='Enter')go()};
+  drawNear();
+  if(G.pos)fetchNear(G.pos);
+}
+
 function confirmBox(msg,ok){
   $('#modalBody').innerHTML=`<div>${msg}</div><div class="row"><button class="btn ghost" id="mNo">取消</button><button class="btn" id="mYes">確定</button></div>`;
   $('#modal').classList.add('show');
@@ -805,7 +877,7 @@ $('#gear').onclick=()=>{view='setup';render();window.scrollTo(0,0)};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;render();window.scrollTo(0,0)});
 render();
 // 一進來就自動開啟 GPS（有進行中的球局時）
-if(S)startGPS();
+startGPS();
 // 有些手機要使用者點過畫面後才允許保持螢幕亮著
 document.addEventListener('click',()=>{if(G.on&&!G.lock)keepAwake()},{passive:true});
 if('serviceWorker' in navigator && location.protocol==='https:' && window.top===window.self){navigator.serviceWorker.register('sw.js').catch(()=>{})}
