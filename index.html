@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>高爾夫記分卡</title>
+<meta name="theme-color" content="#1f5e3b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="高爾夫">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{--g:#1f5e3b;--g2:#2e7d4f;--bg:#f4f1e8;--card:#fff;--ink:#1d2a22;--mute:#6b7a70;--red:#c0392b;--blue:#1e6fb8;--gold:#c9a227}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;background:var(--bg);color:var(--ink);padding:env(safe-area-inset-top) env(safe-area-inset-right) calc(80px + env(safe-area-inset-bottom)) env(safe-area-inset-left)}
+header{background:var(--g);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:18px;font-weight:600}
+header small{opacity:.8}
+main{padding:12px;max-width:560px;margin:0 auto}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,select{width:100%;padding:11px;font-size:16px;border:1px solid #d6d2c4;border-radius:10px;background:#fff}
+.row{display:flex;gap:8px;align-items:center}
+.btn{border:0;border-radius:12px;padding:13px 16px;font-size:16px;font-weight:600;background:var(--g2);color:#fff;width:100%;margin-top:12px}
+.btn.ghost{background:#e7e3d6;color:var(--ink)}
+.btn.sm{width:auto;padding:8px 12px;font-size:14px;margin:0}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid #ddd;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav button{flex:1;border:0;background:none;padding:12px 0;font-size:14px;color:var(--mute)}
+nav button.on{color:var(--g);font-weight:700}
+.holebar{display:flex;align-items:center;justify-content:space-between}
+.holebar .num{font-size:34px;font-weight:800;color:var(--g)}
+.holebar .meta{text-align:center;color:var(--mute);font-size:14px}
+.arrow{width:52px;height:52px;border-radius:50%;border:0;background:#e7e3d6;font-size:24px}
+.parsel{display:flex;gap:6px;margin-top:8px}
+.parsel button{flex:1;padding:8px;border-radius:10px;border:1px solid #d6d2c4;background:#fff;font-size:15px}
+.parsel button.on{background:var(--g);color:#fff;border-color:var(--g)}
+.player{border-top:1px solid #eee;padding-top:12px;margin-top:12px}
+.player:first-child{border:0;margin:0;padding:0}
+.pname{font-weight:700;display:flex;justify-content:space-between}
+.stepper{display:flex;align-items:center;gap:10px;margin-top:8px}
+.stepper .lbl{width:44px;color:var(--mute);font-size:14px}
+.stepper button{width:48px;height:48px;border-radius:12px;border:0;background:#e7e3d6;font-size:24px;font-weight:700}
+.stepper .val{flex:1;text-align:center;font-size:30px;font-weight:800}
+.toggles{display:flex;gap:6px;margin-top:10px}
+.toggles button{flex:1;padding:9px 4px;border-radius:10px;border:1px solid #d6d2c4;background:#fff;font-size:13px}
+.toggles button.on{background:var(--g2);color:#fff;border-color:var(--g2)}
+.tag{font-size:12px;padding:2px 8px;border-radius:20px;color:#fff}
+.t-e{background:var(--gold)}.t-b{background:var(--red)}.t-p{background:var(--g2)}.t-o{background:var(--blue)}.t-d{background:#24476b}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;font-size:13px;min-width:100%}
+th,td{padding:6px 5px;text-align:center;border-bottom:1px solid #eee;white-space:nowrap}
+th{background:#eef0ea;font-weight:600}
+td.nm,th.nm{text-align:left;position:sticky;left:0;background:#fff}
+th.nm{background:#eef0ea}
+td.sub{background:#f7f5ee;font-weight:700}
+.sc{display:inline-block;min-width:24px;line-height:22px}
+.sc.birdie{border:1.5px solid var(--red);border-radius:50%;color:var(--red)}
+.sc.eagle{border:3px double var(--red);border-radius:50%;color:var(--red)}
+.sc.bogey{border:1.5px solid var(--blue);color:var(--blue)}
+.sc.dbl{border:3px double var(--blue);color:var(--blue)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:#f7f5ee;border-radius:10px;padding:10px;text-align:center}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:12px;color:var(--mute)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9;padding:20px}
+.modal.show{display:flex}
+.modal .card{max-width:340px;width:100%}
+.copied{color:var(--g2);font-size:13px;text-align:center;margin-top:6px}
+.hint{font-size:12px;color:var(--mute);margin-top:8px}
+.mapbox{position:relative;border-radius:12px;overflow:hidden;background:#dfe8d6;margin-top:10px}
+.mapbox img{width:100%;display:block;max-height:340px;object-fit:contain;background:#222}
+.mapbox svg{width:100%;height:220px;display:block}
+.mapbtns{display:flex;gap:6px;margin-top:8px}
+.mapbtns .btn{margin:0;padding:9px;font-size:14px}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.thumb{border-radius:10px;overflow:hidden;background:#dfe8d6;aspect-ratio:3/4;position:relative;border:0;padding:0}
+.thumb img,.thumb svg{width:100%;height:100%;object-fit:cover;display:block}
+.thumb span{position:absolute;left:6px;top:6px;background:rgba(31,94,59,.9);color:#fff;font-size:12px;padding:2px 7px;border-radius:10px}
+#viewer{position:fixed;inset:0;background:#000;z-index:10;display:none;overflow:auto;touch-action:pinch-zoom}
+#viewer.show{display:block}
+.gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
+.gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
+.gps .yd b{display:block;font-size:34px;line-height:1.1}
+.gps .yd .c b{font-size:48px;color:#9be37a}
+.gps .yd span{font-size:12px;opacity:.75}
+.gps .btn{background:rgba(255,255,255,.14);color:#fff;margin-top:8px}
+.gps .btn.hi{background:#9be37a;color:#14352a}
+.gps .acc{font-size:12px;opacity:.75;text-align:center}
+.gps .mk{display:flex;gap:6px}.gps .mk .btn{padding:9px 4px;font-size:13px}
+#viewer img{width:100%;min-height:100%;object-fit:contain}
+#viewer button{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.85);font-size:20px}
+</style>
+</head>
+<body>
+<header><div class="row" style="justify-content:space-between"><div><h1 id="title">⛳ 高爾夫記分卡</h1><small id="sub">新增一場球局開始記分</small></div><button id="gear" aria-label="設定" style="border:0;background:rgba(255,255,255,.15);color:#fff;border-radius:10px;width:42px;height:42px;font-size:20px">⚙︎</button></div></header>
+<main id="app"></main>
+<nav id="nav">
+  <button data-v="play">記分</button>
+  <button data-v="map">地圖</button>
+  <button data-v="caddie">桿弟</button>
+  <button data-v="bag">球桿</button>
+  <button data-v="card">成績</button>
+</nav>
+<div class="modal" id="modal"><div class="card" id="modalBody"></div></div>
+<div id="viewer"><button id="vClose">✕</button><img id="vImg" alt=""></div>
+<input type="file" id="mapFile" accept="image/*" style="display:none">
+
+<script>
+const KEY='golf-round-v1';
+const DEFAULT_PARS=[4,4,3,5,4,4,3,4,5, 4,3,5,4,4,4,3,5,4];
+let S=load()||null;
+let view=S?'play':'setup';
+
+function load(){try{return JSON.parse(localStorage.getItem(KEY))}catch(e){return null}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function newRound(course,names,holes){
+  S={course,holes,cur:0,pars:DEFAULT_PARS.slice(0,holes),date:new Date().toLocaleDateString('zh-TW'),
+     players:names.map(n=>({name:n,score:Array(holes).fill(null),putts:Array(holes).fill(null),fw:Array(holes).fill(null),pen:Array(holes).fill(0)}))};
+  save();
+}
+
+// ---------- 球場地圖 ----------
+const mapKey=()=> 'golf-maps:'+((S&&S.course)||'未命名球場');
+let MAPS={};
+function loadMaps(){try{MAPS=JSON.parse(localStorage.getItem(mapKey()))||{}}catch(e){MAPS={}}}
+function saveMaps(){try{localStorage.setItem(mapKey(),JSON.stringify(MAPS));return true}catch(e){return false}}
+function compress(file){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>{
+  const m=1100,sc=Math.min(1,m/Math.max(img.width,img.height));const c=document.createElement('canvas');
+  c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  URL.revokeObjectURL(img.src);res(c.toDataURL('image/jpeg',0.72))};img.onerror=rej;img.src=URL.createObjectURL(file)})}
+let uploadTarget=null;
+function pickMap(target){uploadTarget=target;$('#mapFile').value='';$('#mapFile').click()}
+function schematic(par,n){
+  const fw=par==3?'':par==4?
+    '<path d="M100 300 C95 240 105 170 100 110" stroke="#8cc56b" stroke-width="46" fill="none" stroke-linecap="round"/>':
+    '<path d="M100 300 C100 230 70 190 75 150 C80 110 120 100 125 80" stroke="#8cc56b" stroke-width="44" fill="none" stroke-linecap="round"/>';
+  const g=par==5?[125,62]:[100,par==3?95:78];
+  return `<svg viewBox="0 0 200 330" preserveAspectRatio="xMidYMid meet">
+    <rect width="200" height="330" fill="#6fa857"/>
+    ${par>3?'<ellipse cx="148" cy="190" rx="16" ry="26" fill="#e9dcae"/><ellipse cx="55" cy="140" rx="12" ry="9" fill="#5b9bd5"/>':'<ellipse cx="62" cy="110" rx="18" ry="12" fill="#5b9bd5"/>'}
+    ${fw}
+    <ellipse cx="${g[0]}" cy="${g[1]}" rx="30" ry="24" fill="#a6dc7e"/>
+    <ellipse cx="${g[0]+30}" cy="${g[1]+8}" rx="10" ry="12" fill="#e9dcae"/>
+    <line x1="${g[0]}" y1="${g[1]}" x2="${g[0]}" y2="${g[1]-26}" stroke="#333" stroke-width="2"/>
+    <path d="M${g[0]} ${g[1]-26} l14 5 l-14 5z" fill="#c0392b"/>
+    <rect x="88" y="296" width="24" height="12" rx="3" fill="#a6dc7e" stroke="#fff"/>
+    <text x="10" y="24" font-size="18" font-weight="700" fill="#fff">${n?n+' 洞':''}</text>
+    <text x="10" y="44" font-size="13" fill="#fff">Par ${par}</text>
+  </svg>`;
+}
+function holeMapHTML(h,compact){
+  const img=MAPS[h+1];
+  return `<div class="mapbox">${img?`<img src="${img}" data-view="${h+1}" alt="第 ${h+1} 洞地圖">`:schematic(S.pars[h],h+1)}</div>
+    <div class="mapbtns"><button class="btn ghost" data-up="${h+1}">${img?'更換地圖':'📷 上傳這洞的地圖'}</button>
+    ${img?`<button class="btn ghost" data-view="${h+1}">全螢幕</button><button class="btn ghost" data-del="${h+1}" style="flex:0 0 64px">刪除</button>`:''}</div>
+    ${img||compact?'':'<div class="hint">可以上傳球場的洞示意圖、碼數本的照片或地圖截圖，下次打同一個球場會自動帶出。</div>'}`;
+}
+function bindMapBtns(){
+  document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>pickMap(b.dataset.up));
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{$('#vImg').src=MAPS[b.dataset.view];$('#viewer').classList.add('show')});
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>confirmBox('要刪除這張地圖嗎？',()=>{delete MAPS[b.dataset.del];saveMaps();render()}));
+}
+function renderMap(){
+  const ov=MAPS.overview;
+  $('#app').innerHTML=`<div class="card"><b>全場地圖</b>
+    <div class="mapbox">${ov?`<img src="${ov}" data-view="overview" alt="全場地圖">`:'<div style="padding:40px 16px;text-align:center;color:var(--mute)">還沒有全場地圖</div>'}</div>
+    <div class="mapbtns"><button class="btn ghost" data-up="overview">${ov?'更換全場地圖':'📷 上傳全場地圖'}</button>${ov?'<button class="btn ghost" data-view="overview">全螢幕</button><button class="btn ghost" data-del="overview" style="flex:0 0 64px">刪除</button>':''}</div></div>
+  <div class="card"><b>各洞地圖</b><span style="color:var(--mute);font-size:13px">　點一下就能跳到那一洞</span>
+    <div class="thumbs">${S.pars.map((p,i)=>`<button class="thumb" data-go="${i}"><span>${i+1}・Par ${p}</span>${MAPS[i+1]?`<img src="${MAPS[i+1]}" alt="">`:schematic(p,0)}</button>`).join('')}</div>
+    <div class="hint">地圖會依球場名稱「${esc(S.course||'未命名球場')}」存在這支手機，下次打同一個球場會自動帶出來。</div></div>`;
+  bindMapBtns();
+  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.cur=+b.dataset.go;save();view='play';render();window.scrollTo(0,0)});
+}
+
+function vsPar(n){return n===0?'E':(n>0?'+'+n:''+n)}
+function totals(p,from=0,to=S.holes){
+  let s=0,par=0,played=0;
+  for(let i=from;i<to;i++){if(p.score[i]!=null){s+=p.score[i];par+=S.pars[i];played++}}
+  return {s,par,diff:s-par,played};
+}
+function cls(score,par){if(score==null)return'';const d=score-par;return d<=-2?'eagle':d==-1?'birdie':d==1?'bogey':d>=2?'dbl':''}
+function label(score,par){
+  const d=score-par;
+  if(score===1)return['一桿進洞！','t-e'];
+  if(d<=-3)return['信天翁','t-e'];if(d==-2)return['老鷹','t-e'];if(d==-1)return['博蒂','t-b'];
+  if(d==0)return['平標準桿','t-p'];if(d==1)return['柏忌','t-o'];if(d==2)return['雙柏忌','t-d'];return['+'+d,'t-d'];
+}
+
+function render(){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
+  if(S){$('#title').textContent='⛳ '+(S.course||'高爾夫記分卡');
+    const p=S.players[0],t=totals(p);$('#sub').textContent=S.date+'・'+p.name+' '+(t.played?t.s+'桿 ('+vsPar(t.diff)+')':'尚未記分');}
+  if(!S && ['play','map','card'].includes(view)) view='setup';
+  if(S){loadMaps();loadGreens()}
+  ({setup:renderSetup,play:renderPlay,map:renderMap,card:renderCard,bag:renderBag,caddie:renderCaddie})[view]();
+}
+
+function renderSetup(){
+  const names=S?S.players.map(p=>p.name):['我'];
+  $('#app').innerHTML=`
+  <div class="card">
+    <b>新球局</b>
+    <label>球場名稱</label><input id="course" placeholder="例如：林口球場" value="${S?esc(S.course):''}">
+    <label>洞數</label>
+    <select id="holes"><option value="18">18 洞</option><option value="9">9 洞</option></select>
+    <label>球員（最多 4 位）</label>
+    ${[0,1,2,3].map(i=>`<input class="pn" style="margin-bottom:6px" placeholder="球員 ${i+1}${i?'（選填）':''}" value="${esc(names[i]||'')}">`).join('')}
+    <button class="btn" id="start">${S?'開始新球局（清除目前紀錄）':'開始記分'}</button>
+    ${S?'<button class="btn ghost" id="back">回到目前球局</button>':''}
+    <div class="hint">各洞標準桿可在記分頁面直接調整。紀錄會暫存在這支手機的瀏覽器中。</div>
+  </div>`;
+  $('#start').onclick=()=>{
+    const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);
+    if(!ns.length)ns.push('我');
+    const go=()=>{newRound($('#course').value.trim(),ns,+$('#holes').value);view='play';render()};
+    S?confirmBox('確定要開始新球局？目前的紀錄會被清除。',go):go();
+  };
+  if(S)$('#back').onclick=()=>{view='play';render()};
+}
+
+function renderPlay(){
+  const h=S.cur,par=S.pars[h];
+  $('#app').innerHTML=`<div id="gpsBox"></div>
+  <div class="card">
+    <div class="holebar">
+      <button class="arrow" id="prev" ${h==0?'disabled style="opacity:.3"':''}>‹</button>
+      <div class="meta"><div class="num">第 ${h+1} 洞</div>標準桿 ${par}</div>
+      <button class="arrow" id="next">${h==S.holes-1?'✓':'›'}</button>
+    </div>
+    <div class="parsel">${[3,4,5].map(v=>`<button data-par="${v}" class="${v==par?'on':''}">Par ${v}</button>`).join('')}</div>
+    <details ${MAPS[h+1]?'open':''} style="margin-top:10px"><summary style="font-size:14px;color:var(--g);font-weight:600">🗺 這洞的地圖</summary>${holeMapHTML(h)}</details>
+    <div class="mapbtns"><button class="btn ghost" id="toCaddie">🧢 問桿弟</button><button class="btn ghost" id="toBag">📏 記錄球桿距離</button></div>
+  </div>
+  <div class="card">
+    ${S.players.map((p,i)=>{
+      const sc=p.score[h],t=totals(p);
+      const lb=sc!=null?label(sc,par):null;
+      return `<div class="player">
+        <div class="pname"><span>${esc(p.name)}</span><span style="font-weight:400;color:var(--mute);font-size:14px">總計 ${t.played?t.s+'（'+vsPar(t.diff)+'）':'—'}</span></div>
+        <div class="stepper"><span class="lbl">桿數</span><button data-p="${i}" data-f="score" data-d="-1">−</button>
+          <span class="val">${sc??'<span style="color:#ccc">'+par+'</span>'}</span>
+          <button data-p="${i}" data-f="score" data-d="1">+</button></div>
+        <div style="text-align:center;min-height:20px;margin-top:4px">${lb?`<span class="tag ${lb[1]}">${lb[0]}</span>`:''}</div>
+        <div class="stepper"><span class="lbl">推桿</span><button data-p="${i}" data-f="putts" data-d="-1">−</button>
+          <span class="val" style="font-size:24px">${p.putts[h]??'–'}</span>
+          <button data-p="${i}" data-f="putts" data-d="1">+</button></div>
+        <div class="toggles">
+          ${par>3?`<button data-fw="${i}" data-v="hit" class="${p.fw[h]=='hit'?'on':''}">上球道 ✓</button>
+          <button data-fw="${i}" data-v="miss" class="${p.fw[h]=='miss'?'on':''}">未上球道</button>`:''}
+          <button data-pen="${i}">罰桿 ${p.pen[h]||0}</button>
+        </div>
+      </div>`}).join('')}
+  </div>`;
+  bindMapBtns();
+  $('#toCaddie').onclick=()=>{view='caddie';render();window.scrollTo(0,0)};
+  $('#toBag').onclick=()=>{view='bag';render();window.scrollTo(0,0)};
+  $('#prev').onclick=()=>{if(S.cur>0){S.cur--;save();render()}};
+  $('#next').onclick=()=>{if(S.cur<S.holes-1){S.cur++;save();render()}else{view='card';render()}};
+  document.querySelectorAll('[data-par]').forEach(b=>b.onclick=()=>{S.pars[h]=+b.dataset.par;save();render()});
+  document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{
+    const p=S.players[+b.dataset.p],f=b.dataset.f,d=+b.dataset.d;
+    let v=p[f][h];
+    if(v==null) v=(f=='score'?par:2); else v+=d;
+    if(f=='score'&&v<1)v=null; if(f=='putts'&&v<0)v=null;
+    p[f][h]=v; save(); render();
+  });
+  document.querySelectorAll('[data-fw]').forEach(b=>b.onclick=()=>{
+    const p=S.players[+b.dataset.fw];p.fw[h]=p.fw[h]==b.dataset.v?null:b.dataset.v;save();render()});
+  document.querySelectorAll('[data-pen]').forEach(b=>b.onclick=()=>{
+    const p=S.players[+b.dataset.pen];p.pen[h]=((p.pen[h]||0)+1)%4;save();render()});
+  drawGPS();
+}
+
+function renderCard(){
+  const segs=S.holes==18?[[0,9,'前九'],[9,18,'後九']]:[[0,9,'前九']];
+  let html='';
+  segs.forEach(([a,b,nm])=>{
+    const idx=[...Array(b-a).keys()].map(k=>k+a);
+    html+=`<div class="card"><b>${nm}</b><div class="tablewrap"><table>
+      <tr><th class="nm">洞</th>${idx.map(i=>`<th>${i+1}</th>`).join('')}<th>計</th></tr>
+      <tr><td class="nm">Par</td>${idx.map(i=>`<td>${S.pars[i]}</td>`).join('')}<td class="sub">${idx.reduce((s,i)=>s+S.pars[i],0)}</td></tr>
+      ${S.players.map(p=>{const t=totals(p,a,b);return `<tr><td class="nm">${esc(p.name)}</td>${idx.map(i=>`<td><span class="sc ${cls(p.score[i],S.pars[i])}">${p.score[i]??''}</span></td>`).join('')}<td class="sub">${t.played?t.s:''}</td></tr>`}).join('')}
+    </table></div></div>`;
+  });
+  html+=`<div class="card"><b>總成績</b>${S.players.map(p=>{const t=totals(p);
+    return `<div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee"><span>${esc(p.name)}</span><span><b style="font-size:20px">${t.played?t.s:'—'}</b> ${t.played?'（'+vsPar(t.diff)+'，'+t.played+' 洞）':''}</span></div>`}).join('')}
+    <button class="btn ghost" id="copy">複製成績文字</button><div class="copied" id="cp"></div>
+    <div class="hint">○ 博蒂　◎ 老鷹　□ 柏忌　▣ 雙柏忌以上</div></div>`;
+  $('#app').innerHTML=html+statsHTML();
+  $('#copy').onclick=async()=>{
+    const txt=`⛳ ${S.course||'高爾夫'} ${S.date}\n`+S.players.map(p=>{const t=totals(p),f=totals(p,0,9),b=totals(p,9,18);
+      return `${p.name}：${t.s} 桿（${vsPar(t.diff)}）`+(S.holes==18?` 前九 ${f.s}／後九 ${b.s}`:'')}).join('\n');
+    try{await navigator.clipboard.writeText(txt);$('#cp').textContent='已複製！'}catch(e){$('#cp').innerHTML='<textarea style="width:100%;height:90px">'+esc(txt)+'</textarea>長按上方文字即可複製'}
+  };
+}
+
+function statsHTML(){
+  return '<div style="margin:18px 4px 8px;font-weight:700;color:var(--g)">本場統計</div>'+S.players.map(p=>{
+    let putts=0,pn=0,fwh=0,fwn=0,gir=0,girn=0,pen=0,c={e:0,b:0,p:0,o:0,d:0},one=0,three=0;
+    for(let i=0;i<S.holes;i++){
+      const sc=p.score[i],par=S.pars[i];
+      if(p.putts[i]!=null){putts+=p.putts[i];pn++;if(p.putts[i]==1)one++;if(p.putts[i]>=3)three++}
+      if(p.fw[i]){fwn++;if(p.fw[i]=='hit')fwh++}
+      pen+=p.pen[i]||0;
+      if(sc!=null){const d=sc-par;d<=-2?c.e++:d==-1?c.b++:d==0?c.p++:d==1?c.o++:c.d++;
+        if(p.putts[i]!=null){girn++;if(sc-p.putts[i]<=par-2)gir++}}
+    }
+    const pct=(a,b)=>b?Math.round(a/b*100)+'%':'—';
+    const t=totals(p);
+    return `<div class="card"><b>${esc(p.name)}</b>
+      <div class="stats" style="margin-top:10px">
+        <div class="stat"><b>${t.played?t.s:'—'}</b><span>總桿數（${t.played?vsPar(t.diff):'—'}）</span></div>
+        <div class="stat"><b>${pn?putts:'—'}</b><span>總推桿（平均 ${pn?(putts/pn).toFixed(1):'—'}）</span></div>
+        <div class="stat"><b>${pct(fwh,fwn)}</b><span>上球道率（${fwh}/${fwn}）</span></div>
+        <div class="stat"><b>${pct(gir,girn)}</b><span>標準桿上果嶺率</span></div>
+        <div class="stat"><b>${one} / ${three}</b><span>一推 / 三推以上</span></div>
+        <div class="stat"><b>${pen}</b><span>罰桿</span></div>
+      </div>
+      <div class="row" style="justify-content:space-around;margin-top:12px;font-size:13px">
+        <span><span class="tag t-e">老鷹+</span> ${c.e}</span><span><span class="tag t-b">博蒂</span> ${c.b}</span>
+        <span><span class="tag t-p">Par</span> ${c.p}</span><span><span class="tag t-o">柏忌</span> ${c.o}</span><span><span class="tag t-d">雙+</span> ${c.d}</span>
+      </div></div>`}).join('')+'<div class="hint" style="text-align:center">標準桿上果嶺：桿數 − 推桿 ≤ 標準桿 − 2</div>';
+}
+
+// ---------- 球袋與距離 ----------
+const BAGKEY='golf-bag-v1';
+const PRESET=[['一號木 Driver',230],['3 號木',210],['5 號木',195],['4 號混血',185],['5 號鐵',170],['6 號鐵',160],['7 號鐵',150],['8 號鐵',140],['9 號鐵',130],['PW 劈起桿',120],['50° 挖起桿',105],['56° 沙坑桿',90],['60° 挖起桿',75]];
+let BAG=(()=>{try{return JSON.parse(localStorage.getItem(BAGKEY))}catch(e){return null}})()||
+  {unit:'碼',clubs:PRESET.map((p,i)=>({id:'c'+i,name:p[0],est:p[1],shots:[]}))};
+function saveBag(){try{localStorage.setItem(BAGKEY,JSON.stringify(BAG))}catch(e){}}
+let openClub=null;
+function cstat(c){
+  const s=c.shots.slice(-20).map(x=>x.d);
+  if(!s.length)return{avg:c.est,n:0,min:null,max:null};
+  const avg=Math.round(s.reduce((a,b)=>a+b,0)/s.length);
+  return{avg,n:c.shots.length,min:Math.min(...s),max:Math.max(...s)};
+}
+function setUnit(u){
+  if(u===BAG.unit)return;const f=u==='公尺'?0.9144:1/0.9144;
+  BAG.clubs.forEach(c=>{if(c.est)c.est=Math.round(c.est*f);c.shots.forEach(x=>x.d=Math.round(x.d*f))});
+  if(CD.dist)CD.dist=Math.round(CD.dist*f);if(CD.elev)CD.elev=Math.round(CD.elev*f);
+  BAG.unit=u;saveBag();render();
+}
+function recordShot(id){
+  const c=BAG.clubs.find(x=>x.id===id);
+  $('#modalBody').innerHTML=`<b>${esc(c.name)}</b><label>這一桿打了多遠？（${BAG.unit}）</label>
+    <input id="shotD" type="number" inputmode="numeric" style="font-size:28px;text-align:center" placeholder="${cstat(c).avg||''}">
+    <div class="hint">建議記錄「飛行距離」（落地點），不含滾動，桿弟會更準。</div>
+    <div class="row"><button class="btn ghost" id="mNo">取消</button><button class="btn" id="mYes">儲存</button></div>`;
+  $('#modal').classList.add('show');setTimeout(()=>$('#shotD').focus(),50);
+  $('#mNo').onclick=()=>$('#modal').classList.remove('show');
+  $('#mYes').onclick=()=>{const d=+$('#shotD').value;if(d>0&&d<500){c.shots.push({d,t:Date.now()});saveBag()}$('#modal').classList.remove('show');render()};
+}
+function renderBag(){
+  const clubs=BAG.clubs.slice().sort((a,b)=>(cstat(b).avg||0)-(cstat(a).avg||0));
+  $('#app').innerHTML=`<div class="card">
+    <div class="row" style="justify-content:space-between"><b>我的球袋（${BAG.clubs.length} 支）</b>
+      <div class="parsel" style="margin:0;width:130px">${['碼','公尺'].map(u=>`<button data-unit="${u}" class="${BAG.unit===u?'on':''}">${u}</button>`).join('')}</div></div>
+    ${BAG.clubs.length>14?'<div class="hint" style="color:var(--red)">比賽規則最多帶 14 支球桿。</div>':''}
+    ${clubs.map(c=>{const s=cstat(c),open=openClub===c.id;return `<div style="border-top:1px solid #eee;padding:10px 0">
+      <div class="row" style="justify-content:space-between">
+        <button data-open="${c.id}" style="flex:1;text-align:left;border:0;background:none;padding:0;font-size:16px;color:var(--ink)">
+          <b>${esc(c.name)}</b><br><span style="font-size:12px;color:var(--mute)">${s.n?`${s.n} 次紀錄・${s.min}–${s.max} ${BAG.unit}`:'尚未記錄（預估值）'}</span></button>
+        <div style="text-align:right;margin-right:10px"><b style="font-size:24px;${s.n?'':'color:var(--mute)'}">${s.avg??'—'}</b><span style="font-size:12px;color:var(--mute)"> ${BAG.unit}</span></div>
+        <button class="btn sm" data-rec="${c.id}">＋記錄</button>
+      </div>
+      ${open?`<div style="background:#f7f5ee;border-radius:10px;padding:10px;margin-top:8px">
+        <label style="margin-top:0">球桿名稱</label><input data-name="${c.id}" value="${esc(c.name)}">
+        <label>預估距離（還沒有紀錄時使用，${BAG.unit}）</label><input data-est="${c.id}" type="number" inputmode="numeric" value="${c.est??''}">
+        ${c.shots.length?`<label>最近紀錄（點一下刪除）</label><div style="display:flex;flex-wrap:wrap;gap:6px">${c.shots.slice(-20).reverse().map(x=>`<button class="btn ghost sm" data-delshot="${c.id}:${x.t}">${x.d}</button>`).join('')}</div>`:''}
+        <button class="btn ghost" data-delclub="${c.id}" style="color:var(--red)">從球袋移除這支桿</button></div>`:''}
+    </div>`}).join('')}
+  </div>
+  <div class="card"><b>新增球桿</b>
+    <div class="row" style="margin-top:8px"><input id="newName" placeholder="例如：3 號混血" style="flex:2"><input id="newEst" type="number" inputmode="numeric" placeholder="距離" style="flex:1"></div>
+    <button class="btn" id="addClub">加入球袋</button>
+    <div class="hint">預設距離只是一般業餘球友的參考值，請改成你自己的。每打一桿就按「＋記錄」，平均距離會以最近 20 筆計算。</div></div>`;
+  document.querySelectorAll('[data-unit]').forEach(b=>b.onclick=()=>setUnit(b.dataset.unit));
+  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{openClub=openClub===b.dataset.open?null:b.dataset.open;render()});
+  document.querySelectorAll('[data-rec]').forEach(b=>b.onclick=()=>recordShot(b.dataset.rec));
+  document.querySelectorAll('[data-name]').forEach(i=>i.onchange=()=>{BAG.clubs.find(c=>c.id===i.dataset.name).name=i.value.trim()||'未命名';saveBag();render()});
+  document.querySelectorAll('[data-est]').forEach(i=>i.onchange=()=>{BAG.clubs.find(c=>c.id===i.dataset.est).est=+i.value||null;saveBag();render()});
+  document.querySelectorAll('[data-delshot]').forEach(b=>b.onclick=()=>{const[id,t]=b.dataset.delshot.split(':');const c=BAG.clubs.find(c=>c.id===id);c.shots=c.shots.filter(x=>x.t!=t);saveBag();render()});
+  document.querySelectorAll('[data-delclub]').forEach(b=>b.onclick=()=>confirmBox('確定要把這支桿從球袋移除？距離紀錄也會一起刪除。',()=>{BAG.clubs=BAG.clubs.filter(c=>c.id!==b.dataset.delclub);openClub=null;saveBag();render()}));
+  $('#addClub').onclick=()=>{const n=$('#newName').value.trim();if(!n)return;BAG.clubs.push({id:'c'+Date.now(),name:n,est:+$('#newEst').value||null,shots:[]});saveBag();render()};
+}
+
+// ---------- 電子桿弟 ----------
+const CD={dist:'',wind:0,elev:0,lie:'fw'};
+const WIND=[[-2,'強逆風',0.12],[-1,'逆風',0.06],[0,'無風',0],[1,'順風',-0.04],[2,'強順風',-0.08]];
+const LIE=[['tee','發球台',0],['fw','球道',0],['rough','長草',0.05],['sand','沙坑',0.10]];
+function caddieCalc(){
+  const d=+CD.dist;if(!d)return null;
+  const w=WIND.find(x=>x[0]===CD.wind),l=LIE.find(x=>x[0]===CD.lie);
+  const wAdj=Math.round(d*w[2]),eAdj=Math.round(+CD.elev||0),afterWE=d+wAdj+eAdj,lAdj=Math.round(afterWE*l[2]);
+  const plays=afterWE+lAdj;
+  const list=BAG.clubs.map(c=>({c,avg:cstat(c).avg,n:cstat(c).n})).filter(x=>x.avg).sort((a,b)=>a.avg-b.avg);
+  if(!list.length)return{plays,wAdj,eAdj,lAdj,w,l,none:true};
+  let i=list.findIndex(x=>x.avg>=plays-3);
+  let note='';
+  if(i<0){i=list.length-1;note=`距離超過你最遠的一桿（${list[i].avg} ${BAG.unit}），建議分兩桿打，先放到舒服的距離。`}
+  else{const gap=list[i].avg-plays;
+    if(gap>12&&i>0)note=`介於兩支桿之間：可以用 ${list[i].c.name} 輕一點揮，或用 ${list[i-1].c.name} 全力打。`;
+    else if(gap<=3)note='剛好是這支桿的完整揮桿距離。';
+    else note=`比平均短 ${gap} ${BAG.unit}，可以握短一點或收一點揮。`;
+    if(i===0&&plays<list[0].avg-15)note='距離比最短的桿還短，用切球或半揮桿控制距離。';}
+  return{plays,wAdj,eAdj,lAdj,w,l,pick:list[i],up:list[i+1],down:list[i-1],note};
+}
+function caddieResHTML(){
+  const r=caddieCalc(),u=BAG.unit,sg=n=>(n>0?'+':'')+n;
+  if(!r)return '';
+  return `<div class="card" style="text-align:center">
+    <div style="color:var(--mute);font-size:14px">實際打起來大約</div>
+    <div style="font-size:40px;font-weight:800;color:var(--g)">${r.plays} <span style="font-size:18px">${u}</span></div>
+    <div style="font-size:12px;color:var(--mute)">${CD.dist} ${u}${r.wAdj?`・${r.w[1]} ${sg(r.wAdj)}`:''}${r.eAdj?`・高低差 ${sg(r.eAdj)}`:''}${r.lAdj?`・${r.l[1]} ${sg(r.lAdj)}`:''}</div>
+    ${r.none?'<div class="hint">球袋裡還沒有球桿距離，先到「球桿」頁設定。</div>':`
+    <div style="margin-top:14px;background:#eef5ee;border-radius:12px;padding:14px">
+      <div style="font-size:13px;color:var(--mute)">建議用</div>
+      <div style="font-size:28px;font-weight:800">${esc(r.pick.c.name)}</div>
+      <div style="font-size:13px;color:var(--mute)">你的平均 ${r.pick.avg} ${u}${r.pick.n?`（${r.pick.n} 次紀錄）`:'（預估值）'}</div>
+      <div style="margin-top:8px;font-size:14px">${r.note}</div></div>
+    <div class="row" style="margin-top:10px;font-size:13px;color:var(--mute);justify-content:space-around">
+      ${r.down?`<span>短一支：${esc(r.down.c.name)} ${r.down.avg}</span>`:''}${r.up?`<span>長一支：${esc(r.up.c.name)} ${r.up.avg}</span>`:''}</div>
+    <button class="btn ghost" data-rec="${r.pick.c.id}">打完了，記錄 ${esc(r.pick.c.name)} 的距離</button>`}
+  </div>`;
+}
+function drawCaddieRes(){
+  $('#cdRes').innerHTML=caddieResHTML();
+  document.querySelectorAll('#cdRes [data-rec]').forEach(b=>b.onclick=()=>recordShot(b.dataset.rec));
+}
+function renderCaddie(){
+  const u=BAG.unit,sg=n=>(n>0?'+':'')+n;
+  $('#app').innerHTML=`<div class="card"><b>🧢 電子桿弟</b>
+    <label>到目標的距離（${u}）</label>
+    <input id="cdDist" type="number" inputmode="numeric" value="${CD.dist}" placeholder="例如 150" style="font-size:28px;text-align:center">
+    <label>風向</label><div class="parsel">${WIND.map(x=>`<button data-wind="${x[0]}" class="${CD.wind===x[0]?'on':''}" style="font-size:13px;padding:8px 2px">${x[1]}</button>`).join('')}</div>
+    <label>高低差（${u}，打上坡填正數，下坡填負數）</label>
+    <div class="stepper" style="margin-top:0"><button data-elev="-5">−</button><span class="val" style="font-size:24px">${sg(+CD.elev||0)}</span><button data-elev="5">+</button></div>
+    <label>球位</label><div class="parsel">${LIE.map(x=>`<button data-lie="${x[0]}" class="${CD.lie===x[0]?'on':''}">${x[1]}</button>`).join('')}</div>
+  </div>
+  <div id="cdRes"></div>
+  <div class="hint" style="text-align:center">風和球位是一般經驗值的估算：強逆風 +12%、逆風 +6%、順風 −4%、強順風 −8%、長草 +5%、沙坑 +10%；高低差 1:1 加減。</div>`;
+  drawCaddieRes();
+  $('#cdDist').oninput=e=>{CD.dist=e.target.value;drawCaddieRes()};
+  document.querySelectorAll('[data-wind]').forEach(b=>b.onclick=()=>{CD.wind=+b.dataset.wind;render()});
+  document.querySelectorAll('[data-lie]').forEach(b=>b.onclick=()=>{CD.lie=b.dataset.lie;render()});
+  document.querySelectorAll('[data-elev]').forEach(b=>b.onclick=()=>{CD.elev=(+CD.elev||0)+ +b.dataset.elev;render()});
+}
+
+// ---------- GPS ----------
+const gpsKey=()=>'golf-gps:'+((S&&S.course)||'未命名球場');
+let GREENS={};
+function loadGreens(){try{GREENS=JSON.parse(localStorage.getItem(gpsKey()))||{}}catch(e){GREENS={}}}
+function saveGreens(){try{localStorage.setItem(gpsKey(),JSON.stringify(GREENS))}catch(e){}}
+const G={on:false,pos:null,acc:null,err:null,id:null,lock:null,last:0};
+let SHOT=(()=>{try{return JSON.parse(localStorage.getItem('golf-shot'))}catch(e){return null}})();
+function saveShot(){try{SHOT?localStorage.setItem('golf-shot',JSON.stringify(SHOT)):localStorage.removeItem('golf-shot')}catch(e){}}
+function distM(a,b){const R=6371000,r=x=>x*Math.PI/180;const dLa=r(b.lat-a.lat),dLo=r(b.lon-a.lon);const h=Math.sin(dLa/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+const toU=m=>Math.round(BAG.unit==='公尺'?m:m/0.9144);
+function keepAwake(){try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(l=>G.lock=l).catch(()=>{})}catch(e){}}
+function startGPS(){
+  if(!('geolocation' in navigator)){G.err='這支手機不支援定位';drawGPS();return}
+  G.on=true;G.err=null;
+  try{G.id=navigator.geolocation.watchPosition(p=>{
+      G.pos={lat:p.coords.latitude,lon:p.coords.longitude};G.acc=Math.round(p.coords.accuracy);G.err=null;
+      if(Date.now()-G.last>2500){G.last=Date.now();drawGPS()}},
+    e=>{if(e.code!==1&&G.pos){G.err='GPS 訊號不穩，顯示的是最後一次的位置。'}else G.err=e.code===1?'沒有定位權限。請到手機設定允許這個網頁使用位置；在 Claude 的預覽頁面裡無法使用 GPS，請用你自己的網址開啟。':'暫時抓不到 GPS 訊號，請到空曠的地方再試一次。';drawGPS()},
+    {enableHighAccuracy:true,maximumAge:2000,timeout:20000})}catch(e){G.err='這個環境不能使用 GPS。'}
+  keepAwake();drawGPS();
+}
+function stopGPS(){try{navigator.geolocation.clearWatch(G.id)}catch(e){}G.on=false;G.pos=null;try{G.lock&&G.lock.release()}catch(e){}G.lock=null;drawGPS()}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&G.on)keepAwake()});
+function greenDist(h){const g=GREENS[h+1];if(!g||!G.pos)return null;const o={};['f','c','b'].forEach(k=>{if(g[k])o[k]=toU(distM(G.pos,g[k]))});return o}
+
+function drawGPS(){
+  const box=$('#gpsBox');if(!box||!S)return;
+  const h=S.cur,u=BAG.unit,g=GREENS[h+1]||{};
+  if(!G.on){box.innerHTML=`<div class="gps"><b>📡 GPS 測距</b><div style="font-size:13px;opacity:.8;margin-top:4px">顯示到果嶺前、中、後的距離，也能用 GPS 量你每一桿打多遠。</div>${G.err?`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`:''}<button class="btn hi" id="gpsOn">開啟 GPS</button></div>`;$('#gpsOn').onclick=startGPS;return}
+  const d=greenDist(h);
+  let html=`<div class="gps"><div class="row" style="justify-content:space-between"><b>📡 第 ${h+1} 洞</b><button class="btn sm" id="gpsOff" style="margin:0;background:rgba(255,255,255,.14);color:#fff">關閉 GPS</button></div>`;
+  if(G.err)html+=`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`;
+  if(!G.pos){if(!G.err)html+=`<div class="acc" style="margin:14px 0">正在定位⋯</div>`}
+  else{
+    if(d&&(d.c!=null||d.f!=null||d.b!=null)){
+      html+=`<div class="yd"><div><b>${d.f??'—'}</b><span>前緣</span></div><div class="c"><b>${d.c??'—'}</b><span>果嶺中心（${u}）</span></div><div><b>${d.b??'—'}</b><span>後緣</span></div></div>`;
+      if(d.c!=null)html+=`<button class="btn" id="gpsAsk">🧢 用 ${d.c} ${u} 問桿弟</button>`;
+    }else html+=`<div style="font-size:13px;opacity:.85;margin:10px 0">這洞還沒標記果嶺位置。走到果嶺上時，打開下面的「標記果嶺位置」按一下，下次打這個球場就會自動顯示距離。</div>`;
+    html+=`<div class="acc">GPS 誤差約 ±${toU(G.acc)} ${u}${G.acc>15?'（訊號較弱，距離僅供參考）':''}</div>`;
+    if(SHOT){const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,G.pos));
+      html+=`<div style="background:rgba(155,227,122,.15);border-radius:10px;padding:10px;margin-top:10px;text-align:center">正在量 <b>${esc(c?c.name:'球桿')}</b><div style="font-size:36px;font-weight:800;color:#9be37a">${m} <span style="font-size:15px">${u}</span></div>
+        <div class="row"><button class="btn" id="shotCancel">取消</button><button class="btn hi" id="shotSave">到球旁了，儲存</button></div></div>`;
+    }else html+=`<button class="btn hi" id="shotStart">📏 量這一桿的距離</button>`;
+    html+=`<details style="margin-top:10px"><summary style="font-size:13px;opacity:.85">📍 標記這洞的果嶺位置${g.c?'（已標記）':''}</summary>
+      <div style="font-size:12px;opacity:.75;margin:6px 0">站在果嶺的前緣、中心或後緣，按對應的按鈕。</div>
+      <div class="mk"><button class="btn" data-mark="f">前緣${g.f?' ✓':''}</button><button class="btn" data-mark="c">中心${g.c?' ✓':''}</button><button class="btn" data-mark="b">後緣${g.b?' ✓':''}</button></div>
+      ${g.c||g.f||g.b?'<button class="btn" id="markClear" style="font-size:13px">清除這洞的標記</button>':''}</details>`;
+  }
+  html+='</div>';
+  const det=box.querySelector('details'),wasOpen=det&&det.open;
+  box.innerHTML=html;
+  if(wasOpen&&box.querySelector('details'))box.querySelector('details').open=true;
+  const on=(id,f)=>{const e=document.getElementById(id);if(e)e.onclick=f};
+  on('gpsOff',stopGPS);
+  on('gpsAsk',()=>{CD.dist=d.c;CD.elev=0;view='caddie';render();window.scrollTo(0,0)});
+  on('shotStart',pickShotClub);
+  on('shotCancel',()=>{SHOT=null;saveShot();drawGPS()});
+  on('shotSave',()=>{const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,G.pos));
+    if(c&&m>0){c.shots.push({d:m,t:Date.now()});saveBag()}
+    $('#modalBody').innerHTML=`<div style="text-align:center">已記錄 <b>${esc(c?c.name:'')}</b> ${m} ${u}</div><button class="btn" id="mOk">好</button>`;
+    $('#modal').classList.add('show');$('#mOk').onclick=()=>$('#modal').classList.remove('show');
+    SHOT=null;saveShot();drawGPS()});
+  box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;GREENS[h+1]=Object.assign(GREENS[h+1]||{},{[k]:{...G.pos}});saveGreens();drawGPS()});
+  on('markClear',()=>confirmBox('要清除這洞的果嶺標記嗎？',()=>{delete GREENS[h+1];saveGreens();drawGPS()}));
+}
+function pickShotClub(){
+  const clubs=BAG.clubs.slice().sort((a,b)=>(cstat(b).avg||0)-(cstat(a).avg||0));
+  $('#modalBody').innerHTML=`<b>這一桿用哪支球桿？</b><div style="font-size:13px;color:var(--mute);margin:4px 0 8px">選好後就從現在的位置開始量，打完走到球旁邊再按「儲存」。</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:50vh;overflow:auto">${clubs.map(c=>`<button class="btn ghost sm" data-pick="${c.id}" style="margin:0;width:100%">${esc(c.name)}</button>`).join('')}</div>
+    <button class="btn ghost" id="mNo">取消</button>`;
+  $('#modal').classList.add('show');
+  $('#mNo').onclick=()=>$('#modal').classList.remove('show');
+  document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{if(!G.pos)return;SHOT={club:b.dataset.pick,start:{...G.pos},t:Date.now()};saveShot();$('#modal').classList.remove('show');drawGPS()});
+}
+
+function confirmBox(msg,ok){
+  $('#modalBody').innerHTML=`<div>${msg}</div><div class="row"><button class="btn ghost" id="mNo">取消</button><button class="btn" id="mYes">確定</button></div>`;
+  $('#modal').classList.add('show');
+  $('#mNo').onclick=()=>$('#modal').classList.remove('show');
+  $('#mYes').onclick=()=>{$('#modal').classList.remove('show');ok()};
+}
+
+$('#mapFile').onchange=async e=>{
+  const f=e.target.files[0];if(!f||!uploadTarget)return;
+  try{const old=MAPS[uploadTarget];MAPS[uploadTarget]=await compress(f);
+    if(!saveMaps()){if(old)MAPS[uploadTarget]=old;else delete MAPS[uploadTarget];
+      $('#modalBody').innerHTML='<div>手機的儲存空間不夠，存不下這張圖。可以先刪掉幾張舊地圖再試試看。</div><button class="btn" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">好</button>';$('#modal').classList.add('show')}
+  }catch(err){}
+  render();
+};
+$('#vClose').onclick=()=>$('#viewer').classList.remove('show');
+$('#gear').onclick=()=>{view='setup';render();window.scrollTo(0,0)};
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;render();window.scrollTo(0,0)});
+render();
+if('serviceWorker' in navigator && location.protocol==='https:' && window.top===window.self){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+</script>
+</body>
+</html>
