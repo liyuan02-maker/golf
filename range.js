@@ -171,17 +171,19 @@ function flightTips(list){
 }
 
 // =================== 練習場畫面 ===================
-const RG=Object.assign({view:'face',hand:'R',club:null,cam:'environment',voice:true},
+const RG=Object.assign({view:'face',hand:'R',club:null,cam:'user',voice:true,replay:true},
   (()=>{try{return JSON.parse(localStorage.getItem('golf-range-set'))||{}}catch(e){return{}}})(),
   {on:false,stream:null,det:null,ring:[],pool:[],swings:[],loading:false,err:'',vid:null,cv:null,lastT:-1,lock:null,flashT:0});
-function saveRG(){try{localStorage.setItem('golf-range-set',JSON.stringify({view:RG.view,hand:RG.hand,club:RG.club,cam:RG.cam,voice:RG.voice}))}catch(e){}}
+function saveRG(){try{localStorage.setItem('golf-range-set',JSON.stringify({view:RG.view,hand:RG.hand,club:RG.club,cam:RG.cam,voice:RG.voice,replay:RG.replay,v2:1}))}catch(e){}}
+// 這一版起預設用前鏡頭（看得到自己）
+if(!(()=>{try{return JSON.parse(localStorage.getItem('golf-range-set')||'{}').v2}catch(e){}})()){RG.cam='user';RG.replay=true}
 let RHIST=(()=>{try{return JSON.parse(localStorage.getItem('golf-range-hist'))||[]}catch(e){return[]}})();
 function saveRH(){try{localStorage.setItem('golf-range-hist',JSON.stringify(RHIST.slice(-300)))}catch(e){}}
 const clubName=id=>{const c=BAG.clubs.find(x=>x.id===id);return c?c.name:'未指定球桿'};
 
 // 畫面縮圖用的小 canvas（重複使用，避免手機記憶體不夠）
 function grabFrame(v){
-  const w=144,h=Math.round(w*v.videoHeight/v.videoWidth)||256;
+  const w=180,h=Math.round(w*v.videoHeight/v.videoWidth)||320;
   const c=RG.pool.pop()||document.createElement('canvas');if(c.width!==w||c.height!==h){c.width=w;c.height=h}
   c.getContext('2d').drawImage(v,0,0,w,h);return c;
 }
@@ -237,12 +239,12 @@ function camLoop(){
   const cv=RG.cv;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
   const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   drawBody(ctx,b,1,1,RG.det.st==='ready'?'#7CFC9A':RG.det.st==='idle'?'rgba(255,255,255,.8)':'#ffd84d');
-  if(RG.flashT>t){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,H*0.04,W,H*0.13);ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(H*0.07)}px sans-serif`;ctx.textAlign='center';
+  if(false){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,H*0.04,W,H*0.13);ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(H*0.07)}px sans-serif`;ctx.textAlign='center';
     ctx.fillText(RG.flash,W/2,H*0.13)}
   const st=document.getElementById('rgStat');if(st&&st.textContent!==RG.det.msg){st.textContent=RG.det.msg;st.className='rgstat '+RG.det.st}
 }
 function onSwing(sw,frames){
-  sw.t=Date.now();sw.club=RG.club;sw.view=RG.view;sw.hand=RG.hand;sw.fl=null;
+  sw.t=Date.now();sw.cam=RG.cam;sw.club=RG.club;sw.view=RG.view;sw.hand=RG.hand;sw.fl=null;
   sw.tips=swingTips(sw);sw.det=frames;
   // 重播用的畫面：準備前 0.25 秒到收桿
   sw.rep=RG.ring.filter(f=>f.t>=sw.tS-0.25&&f.t<=sw.tF+0.1);sw.rep.forEach(f=>f.keep=true);
@@ -255,7 +257,8 @@ function onSwing(sw,frames){
   // 只留最近 3 球的重播畫面
   RG.swings.slice(3).forEach(s=>{if(s.rep){s.rep.forEach(f=>{f.keep=false;freeFrame(f.cv)});s.rep=null;s.det=null}});
   RHIST.push({t:sw.t,club:sw.club,view:sw.view,hand:sw.hand,back:sw.back,down:sw.down,ratio:sw.ratio,m:sw.m,fl:null});saveRH();sw.hi=RHIST.length-1;
-  RG.flash=`節奏 ${sw.ratio} : 1`;RG.flashT=performance.now()/1000+3;
+  showFlash(`${sw.ratio} : 1`,`${sw.back} / ${sw.down} 秒`);
+  if(RG.replay)instantReplay(sw);
   if(RG.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance(`上桿 ${sw.back} 秒，下桿 ${sw.down} 秒，節奏 ${sw.ratio} 比 1`);u.lang='zh-TW';u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
   drawRangeList();
 }
@@ -294,8 +297,8 @@ function swingCardHTML(s,idx,n){const i=idx;
   return`<div class="card swing">
     <div class="row" style="justify-content:space-between"><b>第 ${n} 球</b><span style="font-size:13px;color:var(--mute)">${esc(clubName(s.club))}・${s.view==='face'?'正面':'後方'}・${new Date(s.t).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span></div>
     <div class="tempo"><div><b>${s.back}</b><span>上桿（秒）</span></div><div><b>${s.down}</b><span>下桿（秒）</span></div><div class="hi"><b>${s.ratio} : 1</b><span>節奏</span></div></div>
-    <div class="kf">${s.kf.map(k=>`<div>${k.src?`<img src="${k.src}" alt="${k.n}">`:''}<span>${k.n}</span></div>`).join('')}</div>
-    ${s.rep?`<div class="rpwrap"><canvas class="rp" id="rp${i}"></canvas><div class="row"><button class="btn ghost sm" data-rp="${i}:0.25">▶ 慢動作</button><button class="btn ghost sm" data-rp="${i}:1">▶ 原速</button></div></div>`:''}
+    <div class="kf ${s.cam==='user'?'mirror':''}">${s.kf.map(k=>`<div>${k.src?`<img src="${k.src}" alt="${k.n}">`:''}<span>${k.n}</span></div>`).join('')}</div>
+    ${s.rep?`<div class="rpwrap"><canvas class="rp ${s.cam==='user'?'mirror':''}" id="rp${i}"></canvas><div class="row"><button class="btn ghost sm" data-rp="${i}:0.25">▶ 慢動作</button><button class="btn ghost sm" data-rp="${i}:1">▶ 原速</button></div></div>`:''}
     <div class="chips">${chips.map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
     <div class="advbox">${s.tips.map(t=>`<div class="adv ${t.lv}">${t.lv==='warn'?'⚠️':t.lv==='ok'?'✅':'ℹ️'} ${t.t}</div>`).join('')}</div>
     <div class="flhead">${ic('target',16)} 球路</div>
@@ -315,7 +318,7 @@ function drawRangeList(){
 function drawRep(c,s,k){
   const f=s.rep[k];if(!f)return;const x=c.getContext('2d');x.drawImage(f.cv,0,0);
   const d=s.det&&nearest(s.det.filter(q=>q.b),f.t);if(d&&RG.vid)drawBody(x,d.b,c.width/RG.vid.videoWidth,c.height/RG.vid.videoHeight,'#7CFC9A');
-  const ph=f.t<s.tT?'上桿':f.t<s.tI?'下桿':'收桿';x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,0,c.width,20);x.fillStyle='#fff';x.font='bold 12px sans-serif';x.fillText(ph,6,14);
+  const ph=f.t<s.tT?'上桿':f.t<s.tI?'下桿':'收桿';if(s.cam==='user')return;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,0,c.width,20);x.fillStyle='#fff';x.font='bold 12px sans-serif';x.fillText(ph,6,14);
 }
 function playRep(i,speed){
   const s=RG.swings[i],c=document.getElementById('rp'+i);if(!s||!s.rep||!c)return;
@@ -340,6 +343,32 @@ function addClubRange(){
     BAG.clubs.push({id,name:n,est:+$('#ncEst').value||null,shots:[]});saveBag();RG.club=id;saveRG();$('#modal').classList.remove('show');
     if(RG.on){const sel=document.getElementById('rgClub2');if(sel)sel.innerHTML=clubOpts()}else renderRange()};
 }
+// 打完一球：大字顯示節奏
+function showFlash(big,small){
+  const el=document.getElementById('rgFlash');if(!el)return;
+  el.innerHTML=`<b>${big}</b><small>${small}</small>`;el.classList.add('show');
+  clearTimeout(RG.flashTO);RG.flashTO=setTimeout(()=>el.classList.remove('show'),4000);
+}
+// 打完一球：在畫面上直接慢動作重播（前鏡頭時看得到）
+function instantReplay(sw){
+  const box=document.getElementById('rgCam');if(!box||!sw.rep||!sw.rep.length)return;
+  let c=document.getElementById('rgReplay');if(!c){c=document.createElement('canvas');c.id='rgReplay';box.appendChild(c)}
+  c.width=sw.rep[0].cv.width;c.height=sw.rep[0].cv.height;c.style.display='block';
+  const speed=0.4,base=sw.rep[0].t,end=sw.rep[sw.rep.length-1].t;let t0=null;
+  const step=now=>{if(t0===null)t0=now;const el=(now-t0)/1000*speed+base;let k=sw.rep.findIndex(f=>f.t>=el);if(k<0)k=sw.rep.length-1;
+    drawRep(c,sw,k);if(el<end&&RG.on)requestAnimationFrame(step);else setTimeout(()=>{c.style.display='none'},600)};
+  setTimeout(()=>requestAnimationFrame(step),1200);
+}
+// 錄影中切換前／後鏡頭
+async function flipCam(){
+  RG.cam=RG.cam==='user'?'environment':'user';saveRG();
+  try{RG.stream&&RG.stream.getTracks().forEach(t=>t.stop())}catch(e){}
+  try{RG.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:RG.cam,width:{ideal:720},height:{ideal:1280},frameRate:{ideal:60}}});
+    RG.vid.srcObject=RG.stream;await RG.vid.play().catch(()=>{});RG.det=newDetector(onSwing);RG.lastT=-1;
+    RG.ring.forEach(f=>{if(!f.keep)freeFrame(f.cv)});RG.ring=[];
+  }catch(e){RG.err='無法切換鏡頭';stopCam();return}
+  const box=document.getElementById('rgCam');if(box)box.classList.toggle('mirror',RG.cam==='user');
+}
 function renderRange(){
   document.body.classList.add('starting');
   if(!RG.club&&BAG.clubs.length)RG.club=(BAG.clubs.find(c=>/7/.test(c.name))||BAG.clubs[0]).id;
@@ -347,13 +376,14 @@ function renderRange(){
   const clubRow=id=>`<div class="rgclub">${ic('club',24)}<select id="${id}">${clubOpts()}</select><button class="btn sm" id="rgAddClub" aria-label="新增球桿">${ic('plus',20)}</button></div>`;
   $('#app').innerHTML=`<div class="card">
     <div class="row" style="justify-content:space-between"><span class="rghead">${ic('golfer',28)} 練習場</span><button class="icbtn dark" id="rgExit" aria-label="離開">${ic('x',20)}</button></div>
-    ${RG.on?`<div class="rgcam" id="rgCam"><div class="rgstat idle" id="rgStat">請站到畫面中</div></div>
-      <div class="row" style="margin-top:8px">${clubRow('rgClub2')}<button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">${ic('stop',20)}</button></div>`:
+    ${RG.on?`<div class="rgcam ${RG.cam==='user'?'mirror':''}" id="rgCam"><div class="rgflash" id="rgFlash"></div><div class="rgstat idle" id="rgStat">請站到畫面中</div></div>
+      <div class="row" style="margin-top:8px">${clubRow('rgClub2')}<button class="btn sm" id="rgFlip" style="margin:0" aria-label="切換鏡頭">${ic('swap',20)}</button><button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">${ic('stop',20)}</button></div>`:
     `${seg('view',[['face','front','正面'],['dtl','side','後方']])}
-    <div class="hint" style="margin-top:6px">${VIEWHELP[RG.view]}</div>
+    <div class="hint" style="margin-top:6px">${VIEWHELP[RG.view]}${RG.cam==='user'?'<br>前鏡頭：手機螢幕朝向你，揮完可以直接看重播。':''}</div>
     ${seg('hand',[['R','right','右打'],['L','left','左打']])}
     ${clubRow('rgClub')}
-    ${seg('cam',[['environment','camera','後鏡頭'],['user','swap','前鏡頭']])}
+    ${seg('cam',[['user','selfie','前鏡頭'],['environment','camera','後鏡頭']])}
+    ${seg('replay',[[true,'play','自動重播'],[false,'x','不重播']])}
     ${seg('voice',[[true,'speaker','語音開'],[false,'mute','語音關']])}
     ${RG.err?`<div class="adv warn" style="margin-top:10px">${RG.err}</div>`:''}
     <button class="btn rgstart" id="rgStart" ${RG.loading?'disabled':''}>${ic('camera',28)} ${RG.loading?'準備中⋯':'開始'}</button>
@@ -362,7 +392,7 @@ function renderRange(){
   <div id="rgSum"></div><div id="rgList"></div>`;
   $('#rgAddClub').onclick=addClubRange;
   if(RG.on){const box=$('#rgCam');box.prepend(RG.cv);box.prepend(RG.vid);RG.vid.play().catch(()=>{});
-    $('#rgStop').onclick=()=>stopCam();$('#rgClub2').onchange=e=>{RG.club=e.target.value;saveRG()}}
+    $('#rgStop').onclick=()=>stopCam();$('#rgFlip').onclick=flipCam;$('#rgClub2').onchange=e=>{RG.club=e.target.value;saveRG()}}
   else{
     document.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{const[k,v]=b.dataset.rg.split(':');RG[k]=v==='true'?true:v==='false'?false:v;saveRG();renderRange()});
     $('#rgClub').onchange=e=>{RG.club=e.target.value;saveRG()};
