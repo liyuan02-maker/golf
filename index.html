@@ -90,6 +90,9 @@ body.starting nav{display:none}
 .sthead{font-weight:700;margin:18px 0 4px;color:var(--g)}
 .btn.course{display:flex;flex-direction:column;align-items:flex-start;text-align:left;font-weight:600;margin-top:8px}
 .btn.course small{font-weight:400;font-size:12px;color:var(--mute);margin-top:2px}
+.advbox{text-align:left;margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.adv{font-size:14px;padding:8px 10px;border-radius:10px;background:#f7f5ee}
+.adv.warn{background:#fdecea;color:#8a1f12}.adv.tip{background:#fff6d6}.adv.ok{background:#eef5ee}
 .gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
 .gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .gps .yd b{display:block;font-size:34px;line-height:1.1}
@@ -309,7 +312,7 @@ function cstat(c){
 }
 function setUnit(u){
   if(u===BAG.unit)return;const f=u==='公尺'?0.9144:1/0.9144;
-  BAG.clubs.forEach(c=>{if(c.est)c.est=Math.round(c.est*f);c.shots.forEach(x=>x.d=Math.round(x.d*f))});
+  BAG.clubs.forEach(c=>{if(c.est)c.est=Math.round(c.est*f);c.shots.forEach(x=>{x.d=Math.round(x.d*f);if(x.lat!=null)x.lat=Math.round(x.lat*f)})});
   if(CD.dist)CD.dist=Math.round(CD.dist*f);if(CD.elev)CD.elev=Math.round(CD.elev*f);
   BAG.unit=u;saveBag();render();
 }
@@ -332,7 +335,7 @@ function renderBag(){
     ${clubs.map(c=>{const s=cstat(c),open=openClub===c.id;return `<div style="border-top:1px solid #eee;padding:10px 0">
       <div class="row" style="justify-content:space-between">
         <button data-open="${c.id}" style="flex:1;text-align:left;border:0;background:none;padding:0;font-size:16px;color:var(--ink)">
-          <b>${esc(c.name)}</b><br><span style="font-size:12px;color:var(--mute)">${s.n?`${s.n} 次紀錄・${s.min}–${s.max} ${BAG.unit}`:'尚未記錄（預估值）'}</span></button>
+          <b>${esc(c.name)}</b><br><span style="font-size:12px;color:var(--mute)">${s.n?`${s.n} 次紀錄・${s.min}–${s.max} ${BAG.unit}`:'尚未記錄（預估值）'}${(t=>t?`・平均偏${t.avg>0?'右':t.avg<0?'左':''} ${Math.abs(t.avg)}`:'')(cTend(c))}</span></button>
         <div style="text-align:right;margin-right:10px"><b style="font-size:24px;${s.n?'':'color:var(--mute)'}">${s.avg??'—'}</b><span style="font-size:12px;color:var(--mute)"> ${BAG.unit}</span></div>
         <button class="btn sm" data-rec="${c.id}">＋記錄</button>
       </div>
@@ -358,39 +361,70 @@ function renderBag(){
 }
 
 // ---------- 電子桿弟 ----------
-const CD={dist:'',wind:0,elev:0,lie:'fw'};
+const CD={dist:'',wind:0,elev:0,lie:'fw',brg:null,from:null,to:null,hz:[],elevState:null};
 const WIND=[[-2,'強逆風',0.12],[-1,'逆風',0.06],[0,'無風',0],[1,'順風',-0.04],[2,'強順風',-0.08]];
 const LIE=[['tee','發球台',0],['fw','球道',0],['rough','長草',0.05],['sand','沙坑',0.10]];
+const HZN={water:'水池',sand:'沙坑'};
+// 球桿的左右偏差傾向（正數＝偏右）
+function cTend(c){const s=c.shots.slice(-20).filter(x=>x.lat!=null);if(s.length<3)return null;
+  return{n:s.length,avg:Math.round(s.reduce((a,x)=>a+x.lat,0)/s.length)}}
 function caddieCalc(){
-  const d=+CD.dist;if(!d)return null;
+  const d=+CD.dist;if(!d)return null;const u=BAG.unit;
   const w=WIND.find(x=>x[0]===CD.wind),l=LIE.find(x=>x[0]===CD.lie);
   const wAdj=Math.round(d*w[2]),eAdj=Math.round(+CD.elev||0),afterWE=d+wAdj+eAdj,lAdj=Math.round(afterWE*l[2]);
-  const plays=afterWE+lAdj;
-  const list=BAG.clubs.map(c=>({c,avg:cstat(c).avg,n:cstat(c).n})).filter(x=>x.avg).sort((a,b)=>a.avg-b.avg);
-  if(!list.length)return{plays,wAdj,eAdj,lAdj,w,l,none:true};
+  // 氣溫：以 21°C 為基準，每低 1°C 多約 0.24%（天冷球飛得短）
+  const T=W.d?W.d.temperature_2m:null,tAdj=T!=null?Math.round((21-T)*0.0024*(afterWE+lAdj)):0;
+  const plays=afterWE+lAdj+tAdj,rr=plays/d;
+  const list=BAG.clubs.map(c=>({c,avg:cstat(c).avg,n:cstat(c).n,tend:cTend(c)})).filter(x=>x.avg).sort((a,b)=>a.avg-b.avg);
+  const base={plays,wAdj,eAdj,lAdj,tAdj,T,w,l};
+  if(!list.length)return{...base,none:true};
   let i=list.findIndex(x=>x.avg>=plays-3);
   let note='';
-  if(i<0){i=list.length-1;note=`距離超過你最遠的一桿（${list[i].avg} ${BAG.unit}），建議分兩桿打，先放到舒服的距離。`}
+  if(i<0){i=list.length-1;note=`距離超過你最遠的一桿（${list[i].avg} ${u}），建議分兩桿打，先放到舒服的距離。`}
   else{const gap=list[i].avg-plays;
     if(gap>12&&i>0)note=`介於兩支桿之間：可以用 ${list[i].c.name} 輕一點揮，或用 ${list[i-1].c.name} 全力打。`;
     else if(gap<=3)note='剛好是這支桿的完整揮桿距離。';
-    else note=`比平均短 ${gap} ${BAG.unit}，可以握短一點或收一點揮。`;
+    else note=`比平均短 ${gap} ${u}，可以握短一點或收一點揮。`;
     if(i===0&&plays<list[0].avg-15)note='距離比最短的桿還短，用切球或半揮桿控制距離。';}
-  return{plays,wAdj,eAdj,lAdj,w,l,pick:list[i],up:list[i+1],down:list[i-1],note};
+  const pick=list[i];
+  // 障礙物：在擊球線上的（左右 12 公尺內）看能不能越過；在旁邊的配合失誤傾向提醒
+  const adv=[];let layup=null;const tend=pick.tend;
+  (CD.hz||[]).forEach(z=>{
+    const zt=toU(z.to),zc=toU(z.carry),pt=zt*rr,pc=zc*rr,nm=HZN[z.t],reach=pick.avg;
+    if(z.lat<=12){
+      if(reach<pt-8){if(pt-reach<40)adv.push({lv:'ok',t:`${nm}在 ${zt} ${u}，${pick.c.name} 打不到，不用擔心`})}
+      else if(reach>pc+8)adv.push({lv:'ok',t:`可以越過${nm}（要飛 ${zc} ${u}${z.pt?'':'（約）'}，${pick.c.name} 平均 ${reach}）`});
+      else{
+        adv.push({lv:'warn',t:`${pick.c.name} 很可能落在${nm}裡（到 ${zt}／過 ${zc} ${u}）`});
+        const lay=[...list].reverse().find(x=>x.avg<=pt-10),over=list.find(x=>x.avg>=pc+10);
+        if(lay&&!layup){layup=lay;adv.push({lv:'tip',t:`建議改用 <b>${esc(lay.c.name)}</b> 放在${nm}前，剩下約 ${Math.max(0,Math.round(d-lay.avg/rr))} ${u}`})}
+        if(over&&over!==pick)adv.push({lv:'tip',t:`或用 ${esc(over.c.name)} 確定越過（平均 ${over.avg}）`});
+      }
+    }else if(z.lat<=35&&pick.avg>=pt-15&&pick.avg<=pc+15){
+      const side=z.side==='right'?'右':'左',same=tend&&Math.abs(tend.avg)>=4&&((tend.avg>0)===(z.side==='right'));
+      adv.push({lv:same?'warn':'info',t:`${side}邊 ${toU(z.lat)} ${u} 外有${nm}（${zt}–${zc} ${u}）${same?`，你的 ${pick.c.name} 常偏${side}，建議瞄${side==='右'?'左':'右'}邊一點`:''}`});
+    }
+  });
+  let aim='';
+  if(tend&&Math.abs(tend.avg)>=4)aim=`你的 ${pick.c.name} 平均偏${tend.avg>0?'右':'左'} ${Math.abs(tend.avg)} ${u}（${tend.n} 次紀錄），可以往${tend.avg>0?'左':'右'}瞄一點。`;
+  return{...base,pick,up:list[i+1],down:list[i-1],note,adv,aim,layup};
 }
 function caddieResHTML(){
   const r=caddieCalc(),u=BAG.unit,sg=n=>(n>0?'+':'')+n;
   if(!r)return '';
+  const advHTML=r.adv&&r.adv.length?`<div class="advbox">${r.adv.map(a=>`<div class="adv ${a.lv}">${a.lv==='warn'?'⚠️':a.lv==='tip'?'👉':a.lv==='ok'?'✅':'ℹ️'} ${a.t}</div>`).join('')}</div>`:'';
   return `<div class="card" style="text-align:center">
     <div style="color:var(--mute);font-size:14px">實際打起來大約</div>
     <div style="font-size:40px;font-weight:800;color:var(--g)">${r.plays} <span style="font-size:18px">${u}</span></div>
-    <div style="font-size:12px;color:var(--mute)">${CD.dist} ${u}${r.wAdj?`・${r.w[1]} ${sg(r.wAdj)}`:''}${r.eAdj?`・高低差 ${sg(r.eAdj)}`:''}${r.lAdj?`・${r.l[1]} ${sg(r.lAdj)}`:''}</div>
+    <div style="font-size:12px;color:var(--mute)">${CD.dist} ${u}${r.wAdj?`・${r.w[1]} ${sg(r.wAdj)}`:''}${r.eAdj?`・高低差 ${sg(r.eAdj)}`:''}${r.lAdj?`・${r.l[1]} ${sg(r.lAdj)}`:''}${r.tAdj?`・氣溫 ${Math.round(r.T)}°C ${sg(r.tAdj)}`:''}</div>
     ${r.none?'<div class="hint">球袋裡還沒有球桿距離，先到「球桿」頁設定。</div>':`
     <div style="margin-top:14px;background:#eef5ee;border-radius:12px;padding:14px">
       <div style="font-size:13px;color:var(--mute)">建議用</div>
       <div style="font-size:28px;font-weight:800">${esc(r.pick.c.name)}</div>
       <div style="font-size:13px;color:var(--mute)">你的平均 ${r.pick.avg} ${u}${r.pick.n?`（${r.pick.n} 次紀錄）`:'（預估值）'}</div>
-      <div style="margin-top:8px;font-size:14px">${r.note}</div></div>
+      <div style="margin-top:8px;font-size:14px">${r.note}</div>
+      ${r.aim?`<div style="margin-top:6px;font-size:14px">🎯 ${r.aim}</div>`:''}</div>
+    ${advHTML}
     <div class="row" style="margin-top:10px;font-size:13px;color:var(--mute);justify-content:space-around">
       ${r.down?`<span>短一支：${esc(r.down.c.name)} ${r.down.avg}</span>`:''}${r.up?`<span>長一支：${esc(r.up.c.name)} ${r.up.avg}</span>`:''}</div>
     <button class="btn ghost" data-rec="${r.pick.c.id}">打完了，記錄 ${esc(r.pick.c.name)} 的距離</button>`}
@@ -409,25 +443,39 @@ function drawCaddieWind(){
     ${w?`<br>這一桿：<b>${windText(w)}</b>${CD.wind!==w.lvl?` <button class="btn sm" id="cdAutoW" style="margin-left:6px">套用</button>`:'（已套用）'}`:''}</div>`;
   const b=document.getElementById('cdAutoW');if(b)b.onclick=()=>{CD.wind=w.lvl;render()};
 }
+// 高低差：用地形資料（Open-Meteo，約 90 公尺解析度）
+const ELEV={};
+async function fetchElev(a,b){
+  CD.elevState='loading';
+  try{const r=await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${a.lat.toFixed(5)},${b.lat.toFixed(5)}&longitude=${a.lon.toFixed(5)},${b.lon.toFixed(5)}`);
+    const js=await r.json();const e=js.elevation;
+    if(e&&e.length===2&&CD.elevState==='loading'){const dm=e[1]-e[0];CD.elev=Math.round(BAG.unit==='公尺'?dm:dm/0.9144);CD.elevState='auto'}
+    else if(CD.elevState==='loading')CD.elevState='fail';
+  }catch(e){if(CD.elevState==='loading')CD.elevState='fail'}
+  if(view==='caddie')render();
+}
 function renderCaddie(){
   const u=BAG.unit,sg=n=>(n>0?'+':'')+n;
+  const en={loading:'正在用地形資料估算高低差⋯',auto:'已用地形資料自動帶入（解析度較粗，誤差可能有幾公尺，可以自己再調）',fail:'抓不到地形資料，請自己估計'}[CD.elevState]||'';
   $('#app').innerHTML=`<div class="card"><b>🧢 電子桿弟</b>
     <label>到目標的距離（${u}）</label>
     <input id="cdDist" type="number" inputmode="numeric" value="${CD.dist}" placeholder="例如 150" style="font-size:28px;text-align:center">
     <label>風向</label><div class="parsel">${WIND.map(x=>`<button data-wind="${x[0]}" class="${CD.wind===x[0]?'on':''}" style="font-size:13px;padding:8px 2px">${x[1]}</button>`).join('')}</div>
-    <label>高低差（${u}，打上坡填正數，下坡填負數）</label>
-    <div class="stepper" style="margin-top:0"><button data-elev="-5">−</button><span class="val" style="font-size:24px">${sg(+CD.elev||0)}</span><button data-elev="5">+</button></div>
+    <label>高低差（${u}，打上坡為正，下坡為負）</label>
+    <div class="stepper" style="margin-top:0"><button data-elev="-1">−</button><span class="val" style="font-size:24px">${sg(+CD.elev||0)}</span><button data-elev="1">+</button></div>
+    ${en?`<div class="hint" style="margin-top:4px">${en}</div>`:''}
     <label>球位</label><div class="parsel">${LIE.map(x=>`<button data-lie="${x[0]}" class="${CD.lie===x[0]?'on':''}">${x[1]}</button>`).join('')}</div>
   </div>
   <div id="cdWind"></div>
   <div id="cdRes"></div>
-  <div class="hint" style="text-align:center">風和球位是一般經驗值的估算：強逆風 +12%、逆風 +6%、順風 −4%、強順風 −8%、長草 +5%、沙坑 +10%；高低差 1:1 加減。</div>`;
+  <div class="hint" style="text-align:center">估算規則：強逆風 +12%、逆風 +6%、順風 −4%、強順風 −8%；長草 +5%、沙坑 +10%；高低差 1:1 加減；氣溫以 21°C 為準，每低 1°C 約 +0.24%。失誤方向需要用 GPS 量過至少 3 桿才會出現。</div>`;
   drawCaddieRes();drawCaddieWind();
   $('#cdDist').oninput=e=>{CD.dist=e.target.value;drawCaddieRes()};
   document.querySelectorAll('[data-wind]').forEach(b=>b.onclick=()=>{CD.wind=+b.dataset.wind;render()});
   document.querySelectorAll('[data-lie]').forEach(b=>b.onclick=()=>{CD.lie=b.dataset.lie;render()});
-  document.querySelectorAll('[data-elev]').forEach(b=>b.onclick=()=>{CD.elev=(+CD.elev||0)+ +b.dataset.elev;render()});
+  document.querySelectorAll('[data-elev]').forEach(b=>b.onclick=()=>{CD.elev=(+CD.elev||0)+ +b.dataset.elev;CD.elevState=CD.elevState==='loading'?null:CD.elevState==='auto'?'manual':CD.elevState;render()});
 }
+
 
 // ---------- GPS ----------
 const gpsKey=()=>'golf-gps:'+((S&&S.course)||'未命名球場');
@@ -550,7 +598,28 @@ function compass(brg){
     ${wd!=null?`<g transform="rotate(${(wd+180)%360})"><line y1="20" y2="-16" stroke="#6cc3ff" stroke-width="2.5" stroke-dasharray="4 3"/><path d="M0 -22 l-5 8 h10z" fill="#6cc3ff"/></g>`:''}
   </svg>`;
 }
-function askCaddie(dM,brg){CD.dist=toU(dM);CD.elev=0;const w=windFor(brg);if(w)CD.wind=w.lvl;CD.brg=brg;view='caddie';render();window.scrollTo(0,0)}
+// 沿著擊球方向的障礙物：到／過（沿線距離）與離擊球線的左右距離
+function hazAlong(p,brg,maxM){
+  const out=[],b=brg*RAD,ux=Math.sin(b),uy=Math.cos(b);
+  hazards().forEach(z=>{const isPoly=z.pts.length>2,cen=isPoly?centroid(z.pts):z.pts[0];if(distM(p,cen)>maxM+120)return;
+    if(Math.abs(angDiff(bearing(p,cen),brg))>50)return;
+    const P=(isPoly?z.pts:z.pts).map(q=>{const v=xy(q,p);return{al:v.x*ux+v.y*uy,la:v.x*uy-v.y*ux}});
+    let to=Math.min(...P.map(q=>q.al)),carry=Math.max(...P.map(q=>q.al));if(!isPoly)carry=to+12;
+    if(carry<8||to>maxM)return;to=Math.max(0,to);
+    const las=P.map(q=>q.la),span=Math.min(...las)<0&&Math.max(...las)>0;
+    const lat=span?0:Math.min(...las.map(Math.abs)),side=las.reduce((a,x)=>a+x,0)>0?'right':'left';
+    out.push({t:z.t,to,carry,lat,side,pt:isPoly});
+  });
+  return out.sort((a,b)=>a.to-b.to);
+}
+function askCaddie(dM,brg,toPt){
+  CD.dist=toU(dM);CD.elev=0;CD.brg=brg;CD.from=G.pos?{...G.pos}:null;CD.to=toPt||null;CD.elevState=null;
+  const w=windFor(brg);if(w)CD.wind=w.lvl;
+  CD.hz=G.pos&&brg!=null?hazAlong(G.pos,brg,dM+30):[];
+  view='caddie';render();window.scrollTo(0,0);
+  if(CD.from&&CD.to)fetchElev(CD.from,CD.to);
+}
+
 
 // 站著不動最多 5 秒，把多次 GPS 讀數取平均（訊號好時 3 秒就完成）
 function avgPos(title,done){
@@ -613,12 +682,13 @@ function drawGPS(){
   if(wasOpen&&box.querySelector('details'))box.querySelector('details').open=true;
   const on=(id,f)=>{const e=document.getElementById(id);if(e)e.onclick=f};
   on('gpsOff',stopGPS);
-  on('gpsAsk',()=>askCaddie(d.c!=null?d.c:d.f,brg));
+  on('gpsAsk',()=>{const go=greenOf(h);askCaddie(d.c!=null?d.c:d.f,brg,go.c||go.m.f)});
   on('shotStart',pickShotClub);
   on('shotCancel',()=>{SHOT=null;saveShot();drawGPS()});
-  on('shotSave',()=>avgPos('量球的位置',(p,info)=>{const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,p));
-    if(c&&m>0){c.shots.push({d:m,t:Date.now()});saveBag()}
-    avgToast(`已記錄 <b>${esc(c?c.name:'')}</b> ${m} ${u}<div style="font-size:12px;color:var(--mute);margin-top:4px">平均 ${info.n} 次讀數，誤差約 ±${toU(info.acc)} ${u}</div>`);
+  on('shotSave',()=>avgPos('量球的位置',(p,info)=>{const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,p));let lat=null;
+    if(SHOT.aim!=null&&m>20){const df=angDiff(bearing(SHOT.start,p),SHOT.aim);if(Math.abs(df)<45)lat=Math.round(m*Math.sin(df*RAD))}
+    if(c&&m>0){c.shots.push({d:m,t:Date.now(),lat});saveBag()}
+    avgToast(`已記錄 <b>${esc(c?c.name:'')}</b> ${m} ${u}<div style="font-size:12px;color:var(--mute);margin-top:4px">平均 ${info.n} 次讀數，誤差約 ±${toU(info.acc)} ${u}${lat!=null?`<br>${Math.abs(lat)<2?'方向很直':`偏${lat>0?'右':'左'} ${Math.abs(lat)} ${u}`}`:''}</div>`);
     SHOT=null;saveShot();drawGPS()}));
   box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;
     avgPos(`標記果嶺${MARKNAME[k]}`,(p,info)=>{GREENS[hk(h)]=Object.assign(GREENS[hk(h)]||{},{[k]:p});if(!GREENS.center)GREENS.center=p;saveGreens();drawGPS();
@@ -633,7 +703,7 @@ function pickShotClub(){
     <button class="btn ghost" id="mNo">取消</button>`;
   $('#modal').classList.add('show');
   $('#mNo').onclick=()=>$('#modal').classList.remove('show');
-  document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const club=b.dataset.pick;avgPos('記錄擊球位置',p=>{SHOT={club,start:p,t:Date.now()};saveShot();drawGPS()});drawGPS()});
+  document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const club=b.dataset.pick;avgPos('記錄擊球位置',p=>{const aim=SAT.target&&SAT.mode==='hole'?bearing(p,SAT.target):(S?holeBearing(S.cur,p):null);SHOT={club,start:p,t:Date.now(),aim};saveShot();drawGPS()});drawGPS()});
 }
 
 // ---------- 衛星地圖 ----------
@@ -738,7 +808,7 @@ function drawSatInfo(){
     el.innerHTML=t;
     on('mkCancel',()=>{SAT.markMode=null;drawSatInfo()});
     on('tgClear',()=>{SAT.target=null;drawSat();drawSatInfo()});
-    on('tgAsk',()=>askCaddie(distM(G.pos,SAT.target),bearing(G.pos,SAT.target)));
+    on('tgAsk',()=>askCaddie(distM(G.pos,SAT.target),bearing(G.pos,SAT.target),SAT.target));
     el.querySelectorAll('[data-smark]').forEach(b=>b.onclick=()=>{SAT.markMode=b.dataset.smark;SAT.target=null;drawSat();drawSatInfo()});
   }else{
     let n=0;for(let i=0;i<S.holes;i++)if(greenOf(i).c)n++;
