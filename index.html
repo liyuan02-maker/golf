@@ -137,8 +137,8 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-function newRound(course,names,holes){
-  S={course,holes,cur:0,pars:DEFAULT_PARS.slice(0,holes),date:new Date().toLocaleDateString('zh-TW'),
+function newRound(course,names,holes,nines){
+  S={course,holes,nines:nines||null,cur:0,pars:DEFAULT_PARS.slice(0,holes),date:new Date().toLocaleDateString('zh-TW'),
      players:names.map(n=>({name:n,score:Array(holes).fill(null),putts:Array(holes).fill(null),fw:Array(holes).fill(null),pen:Array(holes).fill(0)}))};
   save();
 }
@@ -173,10 +173,10 @@ function schematic(par,n){
   </svg>`;
 }
 function holeMapHTML(h,compact){
-  const img=MAPS[h+1];
-  return `<div class="mapbox">${img?`<img src="${img}" data-view="${h+1}" alt="第 ${h+1} 洞地圖">`:schematic(S.pars[h],h+1)}</div>
-    <div class="mapbtns"><button class="btn ghost" data-up="${h+1}">${img?'更換地圖':'📷 上傳這洞的地圖'}</button>
-    ${img?`<button class="btn ghost" data-view="${h+1}">全螢幕</button><button class="btn ghost" data-del="${h+1}" style="flex:0 0 64px">刪除</button>`:''}</div>
+  const img=MAPS[hk(h)];
+  return `<div class="mapbox">${img?`<img src="${img}" data-view="${hk(h)}" alt="${holeTitle(h)}地圖">`:schematic(S.pars[h],hs(h))}</div>
+    <div class="mapbtns"><button class="btn ghost" data-up="${hk(h)}">${img?'更換地圖':'📷 上傳這洞的地圖'}</button>
+    ${img?`<button class="btn ghost" data-view="${hk(h)}">全螢幕</button><button class="btn ghost" data-del="${hk(h)}" style="flex:0 0 64px">刪除</button>`:''}</div>
     ${img||compact?'':'<div class="hint">可以上傳球場的洞示意圖、碼數本的照片或地圖截圖，下次打同一個球場會自動帶出。</div>'}`;
 }
 function bindMapBtns(){
@@ -191,13 +191,17 @@ function renderMap(){
     <div class="mapbox">${ov?`<img src="${ov}" data-view="overview" alt="全場地圖">`:'<div style="padding:40px 16px;text-align:center;color:var(--mute)">還沒有全場地圖</div>'}</div>
     <div class="mapbtns"><button class="btn ghost" data-up="overview">${ov?'更換全場地圖':'📷 上傳全場地圖'}</button>${ov?'<button class="btn ghost" data-view="overview">全螢幕</button><button class="btn ghost" data-del="overview" style="flex:0 0 64px">刪除</button>':''}</div></div>
   <div class="card"><b>自己上傳的各洞地圖</b><span style="color:var(--mute);font-size:13px">　點一下就能跳到那一洞</span>
-    <div class="thumbs">${S.pars.map((p,i)=>`<button class="thumb" data-go="${i}"><span>${i+1}・Par ${p}</span>${MAPS[i+1]?`<img src="${MAPS[i+1]}" alt="">`:schematic(p,0)}</button>`).join('')}</div>
+    <div class="thumbs">${S.pars.map((p,i)=>`<button class="thumb" data-go="${i}"><span>${hs(i)}・Par ${p}</span>${MAPS[hk(i)]?`<img src="${MAPS[hk(i)]}" alt="">`:schematic(p,0)}</button>`).join('')}</div>
     <div class="hint">地圖會依球場名稱「${esc(S.course||'未命名球場')}」存在這支手機，下次打同一個球場會自動帶出來。</div></div>`;
   bindMapBtns();
   mountSat('satSlot','course','60vh');
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{S.cur=+b.dataset.go;save();view='play';render();window.scrollTo(0,0)});
 }
 
+// 洞的編號：一般 1–18，或 27 洞球場的 A／B／C 球道
+const hk=i=>S&&S.nines?S.nines[Math.floor(i/9)]+(i%9+1):String(i+1);      // 存資料用的鍵
+const hs=i=>S&&S.nines?S.nines[Math.floor(i/9)]+(i%9+1):String(i+1);      // 短標籤 A1
+const holeTitle=i=>S&&S.nines?`${S.nines[Math.floor(i/9)]} 球道第 ${i%9+1} 洞`:`第 ${i+1} 洞`;
 function vsPar(n){return n===0?'E':(n>0?'+'+n:''+n)}
 function totals(p,from=0,to=S.holes){
   let s=0,par=0,played=0;
@@ -252,11 +256,11 @@ function renderPlay(){
   <div class="card">
     <div class="holebar">
       <button class="arrow" id="prev" ${h==0?'disabled style="opacity:.3"':''}>‹</button>
-      <div class="meta"><div class="num">第 ${h+1} 洞</div>標準桿 ${par}</div>
+      <div class="meta"><div class="num">${S.nines?hs(h):`第 ${h+1} 洞`}</div>${S.nines?`${S.nines[Math.floor(h/9)]} 球道・`:''}標準桿 ${par}</div>
       <button class="arrow" id="next">${h==S.holes-1?'✓':'›'}</button>
     </div>
     <div class="parsel">${[3,4,5].map(v=>`<button data-par="${v}" class="${v==par?'on':''}">Par ${v}</button>`).join('')}</div>
-    <details ${MAPS[h+1]?'open':''} style="margin-top:10px"><summary style="font-size:14px;color:var(--g);font-weight:600">🖼 自己上傳的洞圖</summary>${holeMapHTML(h)}</details>
+    <details ${MAPS[hk(h)]?'open':''} style="margin-top:10px"><summary style="font-size:14px;color:var(--g);font-weight:600">🖼 自己上傳的洞圖</summary>${holeMapHTML(h)}</details>
     <div class="mapbtns"><button class="btn ghost" id="toCaddie">🧢 問桿弟</button><button class="btn ghost" id="toBag">📏 記錄球桿距離</button></div>
   </div>
   <div class="card">
@@ -301,12 +305,13 @@ function renderPlay(){
 }
 
 function renderCard(){
-  const segs=S.holes==18?[[0,9,'前九'],[9,18,'後九']]:[[0,9,'前九']];
+  const nn=i=>S.nines?S.nines[i]+' 球道':(i?'後九':'前九');
+  const segs=S.holes==18?[[0,9,nn(0)],[9,18,nn(1)]]:[[0,9,nn(0)]];
   let html='';
   segs.forEach(([a,b,nm])=>{
     const idx=[...Array(b-a).keys()].map(k=>k+a);
     html+=`<div class="card"><b>${nm}</b><div class="tablewrap"><table>
-      <tr><th class="nm">洞</th>${idx.map(i=>`<th>${i+1}</th>`).join('')}<th>計</th></tr>
+      <tr><th class="nm">洞</th>${idx.map(i=>`<th>${hs(i)}</th>`).join('')}<th>計</th></tr>
       <tr><td class="nm">Par</td>${idx.map(i=>`<td>${S.pars[i]}</td>`).join('')}<td class="sub">${idx.reduce((s,i)=>s+S.pars[i],0)}</td></tr>
       ${S.players.map(p=>{const t=totals(p,a,b);return `<tr><td class="nm">${esc(p.name)}</td>${idx.map(i=>`<td><span class="sc ${cls(p.score[i],S.pars[i])}">${p.score[i]??''}</span></td>`).join('')}<td class="sub">${t.played?t.s:''}</td></tr>`}).join('')}
     </table></div></div>`;
@@ -318,7 +323,7 @@ function renderCard(){
   $('#app').innerHTML=html+statsHTML();
   $('#copy').onclick=async()=>{
     const txt=`⛳ ${S.course||'高爾夫'} ${S.date}\n`+S.players.map(p=>{const t=totals(p),f=totals(p,0,9),b=totals(p,9,18);
-      return `${p.name}：${t.s} 桿（${vsPar(t.diff)}）`+(S.holes==18?` 前九 ${f.s}／後九 ${b.s}`:'')}).join('\n');
+      return `${p.name}：${t.s} 桿（${vsPar(t.diff)}）`+(S.holes==18?` ${S.nines?S.nines[0]:'前九'} ${f.s}／${S.nines?S.nines[1]:'後九'} ${b.s}`:'')}).join('\n');
     try{await navigator.clipboard.writeText(txt);$('#cp').textContent='已複製！'}catch(e){$('#cp').innerHTML='<textarea style="width:100%;height:90px">'+esc(txt)+'</textarea>長按上方文字即可複製'}
   };
 }
@@ -548,8 +553,8 @@ async function fetchOSM(c,manual){
 }
 // 這洞的果嶺：手動標記優先，其次用公開地圖資料的果嶺形狀
 function greenOf(h){
-  const m=GREENS[h+1]||{};let poly=null;
-  if(OSM&&OSM.greens.length){const hole=OSM.holes[h+1];const ref=hole?hole.pts[hole.pts.length-1]:(m.c||m.f||m.b);
+  const m=GREENS[hk(h)]||{};let poly=null;
+  if(OSM&&OSM.greens.length){const hole=OSM.holes[hk(h)];const ref=hole?hole.pts[hole.pts.length-1]:(m.c||m.f||m.b);
     if(ref){let best=null,bd=1e9;OSM.greens.forEach(g=>{const d=distM(centroid(g.pts),ref);if(d<bd){bd=d;best=g}});if(best&&bd<(hole?90:45))poly=best.pts}}
   const c=m.c||(poly?centroid(poly):null);
   return{m,poly,c,any:!!(c||m.f||m.b)};
@@ -564,7 +569,7 @@ function greenDists(h){
 function holeBearing(h,from){
   const g=greenOf(h),p=from||G.pos;
   if(p&&g.c)return bearing(p,g.c);
-  const hole=OSM&&OSM.holes[h+1];if(hole)return bearing(hole.pts[0],hole.pts[hole.pts.length-1]);
+  const hole=OSM&&OSM.holes[hk(h)];if(hole)return bearing(hole.pts[0],hole.pts[hole.pts.length-1]);
   return null;
 }
 function hazards(){return[...(OSM?OSM.hz:[]),...((GREENS.hz||[]).map(p=>({t:p.t,pts:[{lat:p.lat,lon:p.lon}]})))]}
@@ -614,7 +619,7 @@ function drawGPS(){
   const h=S.cur,u=BAG.unit;
   if(!G.on){box.innerHTML=`<div class="gps"><b>📡 GPS 測距</b><div style="font-size:13px;opacity:.8;margin-top:4px">顯示到果嶺前緣、障礙物的距離，還有風向與方向。</div>${G.err?`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`:''}<button class="btn hi" id="gpsOn">開啟 GPS</button></div>`;$('#gpsOn').onclick=startGPS;return}
   const d=greenDists(h),brg=holeBearing(h);
-  let html=`<div class="gps"><div class="row" style="justify-content:space-between"><b>📡 第 ${h+1} 洞${brg!=null?`<span style="font-weight:400;opacity:.85">・往${dirName(brg)} ${Math.round(brg)}°</span>`:''}</b><button class="btn sm" id="gpsOff" style="margin:0;background:rgba(255,255,255,.14);color:#fff">關閉</button></div>`;
+  let html=`<div class="gps"><div class="row" style="justify-content:space-between"><b>📡 ${holeTitle(h)}${brg!=null?`<span style="font-weight:400;opacity:.85">・往${dirName(brg)} ${Math.round(brg)}°</span>`:''}</b><button class="btn sm" id="gpsOff" style="margin:0;background:rgba(255,255,255,.14);color:#fff">關閉</button></div>`;
   if(G.err)html+=`<div style="color:#ffb4a8;font-size:13px;margin-top:6px">${G.err}</div>`;
   if(!G.pos){if(!G.err)html+=`<div class="acc" style="margin:14px 0">正在定位⋯</div>`}
   else{
@@ -635,7 +640,7 @@ function drawGPS(){
       html+=`<div style="background:rgba(155,227,122,.15);border-radius:10px;padding:10px;margin-top:10px;text-align:center">正在量 <b>${esc(c?c.name:'球桿')}</b><div style="font-size:36px;font-weight:800;color:#9be37a">${m} <span style="font-size:15px">${u}</span></div>
         <div class="row"><button class="btn" id="shotCancel">取消</button><button class="btn hi" id="shotSave">到球旁了，儲存</button></div></div>`;
     }else html+=`<button class="btn hi" id="shotStart">📏 量這一桿的距離</button>`;
-    const g=GREENS[h+1]||{};
+    const g=GREENS[hk(h)]||{};
     html+=`<details style="margin-top:10px"><summary style="font-size:13px;opacity:.85">📍 站在果嶺上標記位置${g.c?'（已標記）':''}</summary>
       <div style="font-size:12px;opacity:.75;margin:6px 0">站在果嶺的前緣、中心或後緣，按對應的按鈕。</div>
       <div class="mk"><button class="btn" data-mark="f">前緣${g.f?' ✓':''}</button><button class="btn" data-mark="c">中心${g.c?' ✓':''}</button><button class="btn" data-mark="b">後緣${g.b?' ✓':''}</button></div>
@@ -655,8 +660,8 @@ function drawGPS(){
     $('#modalBody').innerHTML=`<div style="text-align:center">已記錄 <b>${esc(c?c.name:'')}</b> ${m} ${u}</div><button class="btn" id="mOk">好</button>`;
     $('#modal').classList.add('show');$('#mOk').onclick=()=>$('#modal').classList.remove('show');
     SHOT=null;saveShot();drawGPS()});
-  box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;GREENS[h+1]=Object.assign(GREENS[h+1]||{},{[k]:{...G.pos}});if(!GREENS.center)GREENS.center={...G.pos};saveGreens();drawGPS()});
-  on('markClear',()=>confirmBox('要清除這洞的果嶺標記嗎？',()=>{delete GREENS[h+1];saveGreens();drawGPS()}));
+  box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;GREENS[hk(h)]=Object.assign(GREENS[hk(h)]||{},{[k]:{...G.pos}});if(!GREENS.center)GREENS.center={...G.pos};saveGreens();drawGPS()});
+  on('markClear',()=>confirmBox('要清除這洞的果嶺標記嗎？',()=>{delete GREENS[hk(h)];saveGreens();drawGPS()}));
 }
 
 function pickShotClub(){
@@ -699,7 +704,7 @@ function focusSat(force){
     if(pts.length){const b=pts.map(ll);if(G.pos&&distM(G.pos,pts[0])<700)b.push(ll(G.pos));
       b.length>1?SAT.map.fitBounds(b,{padding:[40,40],maxZoom:18}):SAT.map.setView(b[0],17);return}
   }else{
-    const cs=[];for(let n=1;n<=S.holes;n++){const go=greenOf(n-1);if(go.c)cs.push(ll(go.c))}
+    const cs=[];for(let i=0;i<S.holes;i++){const go=greenOf(i);if(go.c)cs.push(ll(go.c))}
     if(cs.length>1){SAT.map.fitBounds(cs,{padding:[30,30],maxZoom:17});return}
   }
   if(G.pos)SAT.map.setView(ll(G.pos),17);
@@ -740,8 +745,8 @@ function drawSat(){
     ['f','b'].forEach(k=>{if(g[k])L.marker(ll(g[k]),{icon:pin(MARKNAME[k][0]),interactive:false}).addTo(SAT.layer)});
     if(go.c)L.marker(ll(go.c),{icon:pin('⛳','c'),interactive:false}).addTo(SAT.layer);
   }else{
-    for(let n=1;n<=S.holes;n++){const go=greenOf(n-1);if(go.c){const m=L.marker(ll(go.c),{icon:pin(n,'c')}).addTo(SAT.layer);
-      m.on('click',()=>{S.cur=n-1;save();view='play';render();window.scrollTo(0,0)})}}
+    for(let i=0;i<S.holes;i++){const go=greenOf(i);if(go.c){const m=L.marker(ll(go.c),{icon:pin(hs(i),'c')}).addTo(SAT.layer);
+      m.on('click',()=>{S.cur=i;save();view='play';render();window.scrollTo(0,0)})}}
   }
   if(G.pos){if(G.acc)L.circle(ll(G.pos),{radius:G.acc,color:'#4da3ff',weight:1,fillOpacity:.15,interactive:false}).addTo(SAT.layer);
     L.circleMarker(ll(G.pos),{radius:8,color:'#fff',weight:3,fillColor:'#1e88ff',fillOpacity:1,interactive:false}).addTo(SAT.layer)}
@@ -750,7 +755,7 @@ function onSatClick(e){
   if(!S)return;const p={lat:e.latlng.lat,lon:e.latlng.lng};
   if(SAT.mode==='hole'&&SAT.markMode){
     if(SAT.markMode==='sand'||SAT.markMode==='water'){(GREENS.hz=GREENS.hz||[]).push({t:SAT.markMode,...p});saveGreens();drawOSMLayer()}
-    else{const h=S.cur;GREENS[h+1]=Object.assign(GREENS[h+1]||{},{[SAT.markMode]:p})}
+    else{const k=hk(S.cur);GREENS[k]=Object.assign(GREENS[k]||{},{[SAT.markMode]:p})}
     if(!GREENS.center)GREENS.center=p;saveGreens();SAT.markMode=null;drawGPS();return}
   if(SAT.mode==='hole'){SAT.target=p;drawSat();drawSatInfo()}
 }
@@ -758,7 +763,7 @@ function drawSatInfo(){
   const el=document.getElementById('satInfo');if(!el||!S)return;const u=BAG.unit;
   const on=(id,f)=>{const x=document.getElementById(id);if(x)x.onclick=f};
   if(SAT.mode==='hole'){
-    const g=GREENS[S.cur+1]||{},go=greenOf(S.cur);let t='';
+    const g=GREENS[hk(S.cur)]||{},go=greenOf(S.cur);let t='';
     if(SAT.markMode)t=`<div class="markbar"><span>👆 點一下衛星圖上${SAT.markMode==='sand'||SAT.markMode==='water'?`<b>${MARKNAME[SAT.markMode]}</b>靠近你的邊緣`:`果嶺的<b>${MARKNAME[SAT.markMode]}</b>`}</span><button class="btn sm" id="mkCancel" style="margin:0 0 0 8px">取消</button></div>`;
     else if(SAT.target){const d1=G.pos?distM(G.pos,SAT.target):null,d2=go.c?toU(distM(SAT.target,go.c)):null;
       t=`<div style="font-size:15px;margin:4px 0">◎ 目標點${d1!=null?`：離你 <b>${toU(d1)}</b> ${u}`:''}${d2!=null?`，到果嶺中心 <b>${d2}</b> ${u}`:''}</div>
@@ -792,7 +797,7 @@ function drawSatInfo(){
 }
 
 // ---------- 開場：今天打哪個球場？ ----------
-const START={step:'course',course:null,near:null,nearBusy:false,nearErr:false,holes:18};
+const START={step:'course',course:null,near:null,nearBusy:false,nearErr:false,holes:18,nines:null};
 let COURSES=(()=>{try{return JSON.parse(localStorage.getItem('golf-courses'))||[]}catch(e){return[]}})();
 function rememberCourse(c){COURSES=[{...c,t:Date.now()},...COURSES.filter(x=>x.name!==c.name)].slice(0,10);try{localStorage.setItem('golf-courses',JSON.stringify(COURSES))}catch(e){}}
 async function fetchNear(p){
@@ -812,6 +817,11 @@ function drawNear(){
     el.querySelectorAll('[data-near]').forEach(b=>b.onclick=()=>pickCourse(START.near[+b.dataset.near]));return}
   el.innerHTML=`<div class="hint">${START.near?'附近 25 公里內找不到球場資料，請用上面的搜尋。':START.nearErr?'暫時找不到附近球場，請確認有網路，或用上面的搜尋。':START.nearBusy?'正在找附近的球場⋯':G.err?G.err:'GPS 定位中⋯（請允許使用位置）'}</div>`;
 }
+function ninesOpts(){
+  const cur=START.nines,o=START.holes===18?[{t:'一般 1–18',v:null},{t:'A → B',v:['A','B']},{t:'B → C',v:['B','C']},{t:'C → A',v:['C','A']}]:[{t:'一般 1–9',v:null},{t:'A',v:['A']},{t:'B',v:['B']},{t:'C',v:['C']}];
+  if(cur&&cur.length===2&&!o.some(x=>JSON.stringify(x.v)===JSON.stringify(cur)))o.push({t:cur.join(' → '),v:cur});
+  return o;
+}
 function pickCourse(c){START.course={name:c.name,lat:c.lat,lon:c.lon};START.step='players';render();window.scrollTo(0,0)}
 function renderStart(){
   if(START.step==='players'&&START.course){
@@ -820,13 +830,17 @@ function renderStart(){
       <label>球員（最多 4 位）</label>
       ${[0,1,2,3].map(i=>`<input class="pn" style="margin-bottom:6px" placeholder="球員 ${i+1}${i?'（選填）':''}" value="${esc(names[i]||'')}">`).join('')}
       <label>洞數</label><div class="parsel">${[18,9].map(n=>`<button data-holes="${n}" class="${START.holes===n?'on':''}">${n} 洞</button>`).join('')}</div>
+      <label>球道（27 洞球場選 A／B／C）</label><div class="parsel" style="flex-wrap:wrap">${ninesOpts().map((o,i)=>`<button data-nines="${i}" class="${JSON.stringify(o.v)===JSON.stringify(START.nines)?'on':''}" style="flex:1 0 30%">${o.t}</button>`).join('')}</div>
+      ${START.nines&&START.nines.length===2?`<button class="btn ghost sm" id="stSwap" style="margin-top:6px">⇄ 對調順序（先打 ${START.nines[1]}）</button>`:''}
       <button class="btn" id="stStart" style="font-size:18px;padding:16px">開始打球</button>
       <button class="btn ghost" id="stBack">換一個球場</button></div>`;
-    document.querySelectorAll('[data-holes]').forEach(b=>b.onclick=()=>{START.holes=+b.dataset.holes;document.querySelectorAll('[data-holes]').forEach(x=>x.classList.toggle('on',x===b))});
+    document.querySelectorAll('[data-holes]').forEach(b=>b.onclick=()=>{START.holes=+b.dataset.holes;START.nines=null;render()});
+    document.querySelectorAll('[data-nines]').forEach(b=>b.onclick=()=>{START.nines=ninesOpts()[+b.dataset.nines].v;render()});
+    if(document.getElementById('stSwap'))$('#stSwap').onclick=()=>{START.nines=START.nines.slice().reverse();render()};
     $('#stBack').onclick=()=>{START.step='course';render()};
     $('#stStart').onclick=()=>{
       const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);if(!ns.length)ns.push('我');
-      const c=START.course;newRound(c.name,ns,START.holes);rememberCourse(c);
+      const c=START.course;newRound(c.name,ns,START.holes,START.nines);rememberCourse(c);
       loadGreens();if(c.lat!=null&&!GREENS.center){GREENS.center={lat:c.lat,lon:c.lon};saveGreens()}
       view='play';render();window.scrollTo(0,0);
       if(!G.on)startGPS();
