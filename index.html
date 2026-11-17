@@ -203,7 +203,7 @@ function renderPlay(){
       <button class="arrow" id="next">${h==S.holes-1?'✓':'›'}</button>
     </div>
     <div class="parsel">${[3,4,5].map(v=>`<button data-par="${v}" class="${v==par?'on':''}">Par ${v}</button>`).join('')}</div>
-    <div class="mapbtns"><button class="btn ghost" id="toCaddie">🧢 問桿弟</button><button class="btn ghost" id="toBag">📏 記錄球桿距離</button></div>
+    <div class="mapbtns"><button class="btn ghost" id="toCaddie">🧢 問電子桿弟</button><button class="btn ghost" id="toBag">📏 記錄球桿距離</button></div>
   </div>
   <div class="card">
     ${S.players.map((p,i)=>{
@@ -664,7 +664,7 @@ function drawGPS(){
     html+=`<div class="wxrow">${compass(brg)}<div style="flex:1;font-size:13px;line-height:1.5">${W.d?
       `🌬 <b>${dirName(W.d.wind_direction_10m)}風 ${W.d.wind_speed_10m.toFixed(1)} m/s</b>（陣風 ${W.d.wind_gusts_10m.toFixed(0)}）・${Math.round(W.d.temperature_2m)}°C<br>${w?`這一桿：<b>${windText(w)}</b>`:'標記果嶺後可以算出這一桿的逆順風'}`:
       (W.busy?'正在取得天氣⋯':'天氣資料需要網路')}<div style="opacity:.6;font-size:11px">綠箭頭＝往果嶺方向　藍虛線＝風吹的方向</div></div></div>`;
-    if(d&&(d.c!=null||d.f!=null))html+=`<button class="btn" id="gpsAsk">🧢 用${d.c!=null?'中心 '+toU(d.c):'前緣 '+toU(d.f)} ${u} 問桿弟${w?'（已帶入風向）':''}</button>`;
+    if(d&&(d.c!=null||d.f!=null))html+=`<button class="btn" id="gpsAsk">🧢 用${d.c!=null?'中心 '+toU(d.c):'前緣 '+toU(d.f)} ${u} 問電子桿弟${w?'（已帶入風向）':''}</button>`;
     html+=`<div class="acc">GPS 誤差約 ±${toU(G.acc)} ${u}${G.acc>15?'（訊號較弱，距離僅供參考）':''}</div>`;
     if(SHOT){const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,G.pos));
       html+=`<div style="background:rgba(155,227,122,.15);border-radius:10px;padding:10px;margin-top:10px;text-align:center">正在量 <b>${esc(c?c.name:'球桿')}</b><div style="font-size:36px;font-weight:800;color:#9be37a">${m} <span style="font-size:15px">${u}</span></div>
@@ -799,7 +799,7 @@ function drawSatInfo(){
     if(SAT.markMode)t=`<div class="markbar"><span>👆 點一下衛星圖上${SAT.markMode==='sand'||SAT.markMode==='water'?`<b>${MARKNAME[SAT.markMode]}</b>靠近你的邊緣`:`果嶺的<b>${MARKNAME[SAT.markMode]}</b>`}</span><button class="btn sm" id="mkCancel" style="margin:0 0 0 8px">取消</button></div>`;
     else if(SAT.target){const d1=G.pos?distM(G.pos,SAT.target):null,d2=go.c?toU(distM(SAT.target,go.c)):null;
       t=`<div style="font-size:15px;margin:4px 0">◎ 目標點${d1!=null?`：離你 <b>${toU(d1)}</b> ${u}`:''}${d2!=null?`，到果嶺中心 <b>${d2}</b> ${u}`:''}</div>
-        <div class="mapbtns">${d1!=null?`<button class="btn" id="tgAsk">🧢 用 ${toU(d1)} ${u} 問桿弟</button>`:''}<button class="btn ghost" id="tgClear" style="flex:0 0 80px">清除</button></div>`}
+        <div class="mapbtns">${d1!=null?`<button class="btn" id="tgAsk">🧢 用 ${toU(d1)} ${u} 問電子桿弟</button>`:''}<button class="btn ghost" id="tgClear" style="flex:0 0 80px">清除</button></div>`}
     else t=`<div class="hint" style="margin-top:4px">點地圖上任一點，可以看到你到那裡、那裡到果嶺的距離。</div>`;
     t+=`<div style="font-size:13px;color:var(--mute);margin-top:8px">在衛星圖上標記果嶺${go.poly&&!g.c?'（已從地圖資料自動找到）':g.c?'（已標記）':''}：</div>
       <div class="parsel" style="margin-top:4px">${['f','c','b'].map(k=>`<button data-smark="${k}" class="${SAT.markMode===k?'on':''}">${MARKNAME[k]}${g[k]?' ✓':''}</button>`).join('')}</div>
