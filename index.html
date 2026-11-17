@@ -507,10 +507,11 @@ function startGPS(){
   G.on=true;G.err=null;
   try{G.id=navigator.geolocation.watchPosition(p=>{
       G.pos={lat:p.coords.latitude,lon:p.coords.longitude};G.acc=Math.round(p.coords.accuracy);G.err=null;
+      if(G.samp)G.samp.push({lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy});
       loadWeather(G.pos);if(view==='start'){fetchNear(G.pos)}else if(S&&!OSM&&!OSMST.tried[S.course])fetchOSM(G.pos);
       if(Date.now()-G.last>2500){G.last=Date.now();drawGPS()}},
     e=>{if(e.code!==1&&G.pos){G.err='GPS 訊號不穩，顯示的是最後一次的位置。'}else G.err=e.code===1?'沒有定位權限。請到手機設定允許這個網頁使用位置；在 Claude 的預覽頁面裡無法使用 GPS，請用你自己的網址開啟。':'暫時抓不到 GPS 訊號，請到空曠的地方再試一次。';drawGPS()},
-    {enableHighAccuracy:true,maximumAge:2000,timeout:20000})}catch(e){G.err='這個環境不能使用 GPS。'}
+    {enableHighAccuracy:true,maximumAge:0,timeout:20000})}catch(e){G.err='這個環境不能使用 GPS。'}
   keepAwake();drawGPS();
 }
 function stopGPS(){try{navigator.geolocation.clearWatch(G.id)}catch(e){}G.on=false;G.pos=null;try{G.lock&&G.lock.release()}catch(e){}G.lock=null;drawGPS()}
@@ -613,6 +614,28 @@ function compass(brg){
 }
 function askCaddie(dM,brg){CD.dist=toU(dM);CD.elev=0;const w=windFor(brg);if(w)CD.wind=w.lvl;CD.brg=brg;view='caddie';render();window.scrollTo(0,0)}
 
+// 站著不動最多 5 秒，把多次 GPS 讀數取平均（訊號好時 3 秒就完成）
+function avgPos(title,done){
+  if(!G.pos)return;
+  G.samp=[{...G.pos,acc:G.acc||10}];const t0=Date.now();let stop=false;
+  $('#modalBody').innerHTML=`<div style="text-align:center"><b>📍 ${title}</b><div style="font-size:14px;color:var(--mute);margin:6px 0">請站著不動，正在取平均位置</div>
+    <div id="avgN" style="font-size:44px;font-weight:800;color:var(--g)">5</div>
+    <div style="height:8px;background:#e7e3d6;border-radius:4px;overflow:hidden"><div id="avgBar" style="height:100%;width:0;background:var(--g2);transition:width .25s linear"></div></div>
+    <div id="avgInfo" style="font-size:12px;color:var(--mute);margin-top:6px">已取得 1 次讀數</div></div>
+    <div class="row"><button class="btn ghost" id="mNo">取消</button><button class="btn" id="avgNow">現在就用</button></div>`;
+  $('#modal').classList.add('show');
+  const finish=ok=>{if(stop)return;stop=true;clearInterval(iv);const sm=G.samp;G.samp=null;$('#modal').classList.remove('show');if(!ok)return;
+    const best=Math.min(...sm.map(x=>x.acc)),use=sm.filter(x=>x.acc<=Math.max(15,best*2));
+    let w=0,la=0,lo=0;use.forEach(x=>{const k=1/Math.max(x.acc,1)**2;w+=k;la+=x.lat*k;lo+=x.lon*k});
+    done({lat:la/w,lon:lo/w},{n:use.length,acc:Math.max(1,Math.round(best/Math.sqrt(use.length)))})};
+  const iv=setInterval(()=>{const t=(Date.now()-t0)/1000,sm=G.samp||[];
+    const el=document.getElementById('avgN');if(!el)return;
+    el.textContent=Math.max(0,Math.ceil(5-t));$('#avgBar').style.width=Math.min(100,t/5*100)+'%';
+    $('#avgInfo').textContent=`已取得 ${sm.length} 次讀數`;
+    if(t>=5||(t>=3&&sm.length>=3&&sm.every(x=>x.acc<=6)))finish(true)},250);
+  $('#mNo').onclick=()=>finish(false);$('#avgNow').onclick=()=>finish(true);
+}
+function avgToast(msg){$('#modalBody').innerHTML=`<div style="text-align:center">${msg}</div><button class="btn" id="mOk">好</button>`;$('#modal').classList.add('show');$('#mOk').onclick=()=>$('#modal').classList.remove('show')}
 function drawGPS(){
   drawSat();drawSatInfo();if(view==='start')drawNear();
   const box=$('#gpsBox');if(!box||!S)return;
@@ -655,12 +678,13 @@ function drawGPS(){
   on('gpsAsk',()=>askCaddie(d.c!=null?d.c:d.f,brg));
   on('shotStart',pickShotClub);
   on('shotCancel',()=>{SHOT=null;saveShot();drawGPS()});
-  on('shotSave',()=>{const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,G.pos));
+  on('shotSave',()=>avgPos('量球的位置',(p,info)=>{const c=BAG.clubs.find(x=>x.id===SHOT.club);const m=toU(distM(SHOT.start,p));
     if(c&&m>0){c.shots.push({d:m,t:Date.now()});saveBag()}
-    $('#modalBody').innerHTML=`<div style="text-align:center">已記錄 <b>${esc(c?c.name:'')}</b> ${m} ${u}</div><button class="btn" id="mOk">好</button>`;
-    $('#modal').classList.add('show');$('#mOk').onclick=()=>$('#modal').classList.remove('show');
-    SHOT=null;saveShot();drawGPS()});
-  box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;GREENS[hk(h)]=Object.assign(GREENS[hk(h)]||{},{[k]:{...G.pos}});if(!GREENS.center)GREENS.center={...G.pos};saveGreens();drawGPS()});
+    avgToast(`已記錄 <b>${esc(c?c.name:'')}</b> ${m} ${u}<div style="font-size:12px;color:var(--mute);margin-top:4px">平均 ${info.n} 次讀數，誤差約 ±${toU(info.acc)} ${u}</div>`);
+    SHOT=null;saveShot();drawGPS()}));
+  box.querySelectorAll('[data-mark]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const k=b.dataset.mark;
+    avgPos(`標記果嶺${MARKNAME[k]}`,(p,info)=>{GREENS[hk(h)]=Object.assign(GREENS[hk(h)]||{},{[k]:p});if(!GREENS.center)GREENS.center=p;saveGreens();drawGPS();
+      avgToast(`已標記果嶺${MARKNAME[k]}<div style="font-size:12px;color:var(--mute);margin-top:4px">平均 ${info.n} 次讀數，誤差約 ±${toU(info.acc)} ${u}</div>`)})});
   on('markClear',()=>confirmBox('要清除這洞的果嶺標記嗎？',()=>{delete GREENS[hk(h)];saveGreens();drawGPS()}));
 }
 
@@ -671,7 +695,7 @@ function pickShotClub(){
     <button class="btn ghost" id="mNo">取消</button>`;
   $('#modal').classList.add('show');
   $('#mNo').onclick=()=>$('#modal').classList.remove('show');
-  document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{if(!G.pos)return;SHOT={club:b.dataset.pick,start:{...G.pos},t:Date.now()};saveShot();$('#modal').classList.remove('show');drawGPS()});
+  document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{if(!G.pos)return;const club=b.dataset.pick;avgPos('記錄擊球位置',p=>{SHOT={club,start:p,t:Date.now()};saveShot();drawGPS()});drawGPS()});
 }
 
 // ---------- 衛星地圖 ----------
