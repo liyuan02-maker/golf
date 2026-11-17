@@ -229,7 +229,7 @@ function renderSetup(){
   $('#start').onclick=()=>{
     const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);
     if(!ns.length)ns.push('我');
-    const go=()=>{newRound($('#course').value.trim(),ns,+$('#holes').value);view='play';render()};
+    const go=()=>{newRound($('#course').value.trim(),ns,+$('#holes').value);view='play';render();if(!G.on)startGPS()};
     S?confirmBox('確定要開始新球局？目前的紀錄會被清除。',go):go();
   };
   if(S)$('#back').onclick=()=>{view='play';render()};
@@ -660,6 +660,10 @@ $('#vClose').onclick=()=>$('#viewer').classList.remove('show');
 $('#gear').onclick=()=>{view='setup';render();window.scrollTo(0,0)};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;render();window.scrollTo(0,0)});
 render();
+// 一進來就自動開啟 GPS（有進行中的球局時）
+if(S)startGPS();
+// 有些手機要使用者點過畫面後才允許保持螢幕亮著
+document.addEventListener('click',()=>{if(G.on&&!G.lock)keepAwake()},{passive:true});
 if('serviceWorker' in navigator && location.protocol==='https:' && window.top===window.self){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 </script>
 </body>
