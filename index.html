@@ -192,9 +192,29 @@ nav button span{font-size:11px}
 .rgcam.mirror video,.rgcam.mirror>canvas:not(#rgReplay),.mirror img,canvas.mirror,#rgCam.mirror #rgReplay{transform:scaleX(-1)}
 .kf.mirror img{transform:scaleX(-1)}
 #rgReplay{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none;z-index:3}
-.rgflash{position:absolute;left:0;right:0;top:4%;z-index:4;text-align:center;color:#fff;opacity:0;transition:opacity .3s;pointer-events:none}
+.rgflash{position:absolute;left:0;right:0;top:15%;z-index:4;text-align:center;color:#fff;opacity:0;transition:opacity .3s;pointer-events:none}
 .rgflash.show{opacity:1}.rgflash b{display:inline-block;font-size:56px;font-weight:800;background:rgba(0,0,0,.55);border-radius:16px;padding:4px 18px}
 .rgflash small{display:block;font-size:20px;margin-top:4px;text-shadow:0 1px 4px #000}
+.rgguide{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;stroke:#fff;stroke-width:1;opacity:.75;transition:opacity .3s}
+.rgguide.ok{stroke:#7CFC9A}.rgguide.warn{stroke:#ffd84d}.rgguide.bad{stroke:#ff8a7a}.rgguide.dim{opacity:.18}
+.rglights{position:absolute;top:8px;left:8px;right:8px;z-index:4;display:flex;gap:6px;justify-content:center}
+.rglights .lt{display:flex;align-items:center;gap:3px;background:rgba(0,0,0,.55);color:#bbb;border-radius:20px;padding:4px 9px;font-size:12px}
+.rglights .lt::before{content:'';width:9px;height:9px;border-radius:50%;background:#777}
+.rglights .lt.ok{color:#fff}.rglights .lt.ok::before{background:#3ddc6f;box-shadow:0 0 6px #3ddc6f}
+.rglights .lt.warn::before{background:#ffd84d}.rglights .lt.bad{color:#fff}.rglights .lt.bad::before{background:#ff5a4a;box-shadow:0 0 6px #ff5a4a}
+.rglights .lt.go::before{background:#ffd84d;box-shadow:0 0 6px #ffd84d}
+.rgphase{position:absolute;top:40px;left:8px;right:8px;z-index:4;display:flex;gap:3px;justify-content:center;align-items:center;font-size:12px;color:#ddd}
+.rgphase .ph{background:rgba(0,0,0,.5);border-radius:8px;padding:2px 7px}.rgphase .ph.ok{background:rgba(31,140,70,.85);color:#fff}.rgphase .ph.bad{background:rgba(200,50,40,.9);color:#fff}
+.rgphase i{font-style:normal;opacity:.6}
+.rgstat.fail{background:rgba(200,50,40,.88)}
+.rgflash.bad b{background:rgba(200,50,40,.85)}.rgflash.bad small{font-size:17px;padding:0 12px}
+.btn.rgmanual{display:flex;align-items:center;justify-content:center;gap:6px;background:#2f6fd6;margin-top:8px}
+.impsec{margin-top:16px;border-top:1px solid #eee;padding-top:10px}.imph{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--g)}
+.btn.rgimport{display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.impbox{text-align:center;padding:20px 6px;color:var(--g)}.impbox div{color:var(--ink);margin-top:6px}
+.impbox .bar{height:10px;background:#e7e3d6;border-radius:5px;overflow:hidden;margin:12px 0}.impbox .bar div{height:100%;background:var(--g2);margin:0;transition:width .2s}
+.flsvg{width:100%;max-width:320px;display:block;margin:8px auto 0;border-radius:10px}.flsvg.big{max-width:420px}
+.trk{margin-left:6px;background:#ffd84d;color:#333;border-radius:8px;padding:1px 6px;font-size:11px}
 .gps{background:#14352a;color:#fff;border-radius:14px;padding:14px;margin-bottom:12px}
 .gps .yd{display:flex;justify-content:space-around;text-align:center;margin:6px 0}
 .gps .yd b{display:block;font-size:34px;line-height:1.1}
@@ -288,6 +308,7 @@ const ICONS={
   front:'<circle cx="12" cy="5" r="2.5"/><path d="M12 8v7M8 11h8M12 15l-3 6M12 15l3 6"/>', side:'<circle cx="12" cy="5" r="2.5"/><path d="M12 8l-1 7 3 6M11 15l-3 6M12 10l5 2"/>',
   speaker:'<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>', mute:'<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/>',
   selfie:'<rect x="6" y="2" width="12" height="20" rx="2.5"/><circle cx="12" cy="10" r="2.5"/><path d="M8.5 16c.8-1.6 2-2.4 3.5-2.4s2.7.8 3.5 2.4M11 4.5h2"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>', swap:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   fair:'<path d="M3 20c4-8 14-8 18-16"/><path d="M3 14c4-4 8-5 11-9"/>', play:'<path d="M7 4l13 8-13 8z"/>', plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>'
 };

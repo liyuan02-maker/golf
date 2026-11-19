@@ -43,66 +43,120 @@ function angleAt(a,b,c){const v1={x:a.x-b.x,y:a.y-b.y},v2={x:c.x-b.x,y:c.y-b.y};
   const d=(v1.x*v2.x+v1.y*v2.y)/((Math.hypot(v1.x,v1.y)*Math.hypot(v2.x,v2.y))||1);return Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI}
 
 // ---------- 揮桿偵測（每一格呼叫一次） ----------
-// 狀態：idle（等待站好）→ ready（準備姿勢）→ swing（上桿、下桿）→ follow（收桿）→ 冷卻
-function newDetector(onSwing){
-  // 用「那一格本身」記住準備、開始、頂點、擊球，不用索引（舊畫面會被丟掉，索引會位移）
-  const D={st:'idle',fr:[],addr:null,sF:null,tS:0,topF:null,impF:null,impT:0,cool:0,lost:0,msg:'請站到畫面中，全身入鏡'};
-  const keep=6;// 秒
-  D.push=f=>{ // f={t,b(body)}
+// 狀態：idle → ready（準備）→ swing（上桿、下桿）→ follow（收桿）。
+// 放寬：不一定要先停住，手從低處快速舉起也算開始；失敗時記下卡在哪一步，並再用「整段回頭找」補救一次。
+const PH=['ready','top','impact','finish'];
+function newDetector(onSwing,onFail){
+  const D={st:'idle',fr:[],addr:null,sF:null,tS:0,topF:null,impF:null,impT:0,cool:0,lost:0,lastLow:null,
+    ph:{ready:0,top:0,impact:0,finish:0},fail:null,msg:'請站到框裡，全身入鏡'};
+  const keep=6;
+  const reset=(msg,failStep)=>{
+    D.st='idle';D.addr=null;D.lastLow=null;D.msg=msg;
+    if(failStep){D.fail=failStep;D.ph[failStep]=-1;D.failT=D.fr.length?D.fr[D.fr.length-1].t:0;
+      // 補救：把最近幾秒整段拿來找揮桿
+      const sw=rescue();if(sw)return;onFail&&onFail(failStep,msg)}
+  };
+  const rescue=()=>{const t=D.fr.length?D.fr[D.fr.length-1].t:0;const got=findSwings(D.fr.filter(x=>x.t>=t-4.5));
+    const last=got[got.length-1];if(!last)return null;
+    D.fail=null;PH.forEach(k=>D.ph[k]=1);D.cool=t+0.8;D.msg='分析完成，可以再打下一球';
+    onSwing(last.sw,D.fr.filter(x=>x.t>=last.sw.tS-0.4));return last.sw};
+  D.push=f=>{
     D.fr.push(f);while(D.fr.length&&f.t-D.fr[0].t>keep)D.fr.shift();
     const n=D.fr.length-1,b=f.b;
-    if(!b){if(++D.lost>8&&D.st!=='idle'){D.st='idle';D.msg='看不到身體，請整個人入鏡'}return}
+    if(!b){if(++D.lost>15&&D.st!=='idle'){reset('揮桿中身體跑出畫面，請整個人站進框裡',D.st==='swing'?'top':D.st==='follow'?'finish':'ready')}return}
     D.lost=0;
     if(f.t<D.cool)return;
     const T=D.addr?D.addr.b.torso:b.torso;
+    const low=b.hand.y>b.sm.y+0.4*b.torso;
     if(D.st==='idle'||D.st==='ready'){
-      // 0.4 秒內手幾乎不動，而且手在胸口以下 → 準備姿勢
-      const win=D.fr.filter(x=>x.b&&f.t-x.t<=0.4);
-      const still=win.length>=4&&win[0].t<=f.t-0.3&&win.every(x=>dist2(x.b.hand,b.hand)<0.07*b.torso);
-      const low=b.hand.y>b.sm.y+0.55*b.torso;
-      if(still&&low){D.st='ready';D.addr=f;D.msg='準備好了，可以揮桿'}
-      else if(D.st==='ready'&&dist2(b.hand,D.addr.b.hand)>0.25*T){
-        // 開始上桿：往回找最後一格「手還沒離開」的畫面，再在兩格之間內插出起動時間
+      if(D.st==='idle'&&!D.fail)PH.forEach(k=>D.ph[k]=0);
+      const win=D.fr.filter(x=>x.b&&f.t-x.t<=0.3);
+      const still=win.length>=3&&win[0].t<=f.t-0.2&&win.every(x=>dist2(x.b.hand,b.hand)<0.1*b.torso);
+      if(low&&(!D.lastLow||b.hand.y>=D.lastLow.b.hand.y-0.05*b.torso||f.t-D.lastLow.t>1.5))D.lastLow=f;
+      if(still&&low){if(D.st!=='ready'&&(!D.fail||f.t-(D.failT||0)>2.5)){D.fail=null;PH.forEach(k=>D.ph[k]=0)}D.st='ready';D.addr=f;D.ph.ready=1;D.msg='準備好了，可以揮桿'}
+      const base=D.st==='ready'?D.addr:(D.lastLow&&f.t-D.lastLow.t<1.5?D.lastLow:null);
+      if(base&&!(still&&low)&&dist2(b.hand,base.b.hand)>0.25*T&&b.hand.y<base.b.hand.y){
+        D.addr=base;D.ph.ready=1;
         const A=D.addr.b.hand,th=0.03*T;let s=n;
-        while(s>0&&D.fr[s-1].b&&dist2(D.fr[s-1].b.hand,A)>th)s--;
+        while(s>0&&D.fr[s-1].b&&D.fr[s-1].t>=base.t&&dist2(D.fr[s-1].b.hand,A)>th)s--;
         const p0=D.fr[Math.max(0,s-1)],p1=D.fr[s],d0=p0.b?dist2(p0.b.hand,A):0,d1=dist2(p1.b.hand,A);
         D.tS=p0===p1?p1.t:p0.t+(p1.t-p0.t)*Math.max(0,Math.min(1,(th-d0)/((d1-d0)||1)));
         D.sF=p0;D.st='swing';D.topF=f;D.impF=null;D.msg='揮桿中⋯';
-      }else if(D.st==='idle')D.msg=low?'站好準備姿勢，手停住一下':'請站好準備姿勢';
+      }else if(D.st==='idle'&&!D.fail)D.msg=low?'站好準備姿勢，手停一下':'請站好準備姿勢';
       return;
     }
     if(D.st==='swing'){
-      if(f.t-D.tS>3){D.st='idle';D.msg='沒有偵測到完整揮桿，請再試一次';return}
       if(b.hand.y<D.topF.b.hand.y)D.topF=f;
       const rose=D.addr.b.hand.y-D.topF.b.hand.y;
-      if(rose>0.6*T&&b.hand.y>D.topF.b.hand.y+0.3*T){
-        // 下桿：手回到準備姿勢高度附近 → 擊球（在兩格之間內插時間）
-        const yI=D.addr.b.hand.y-0.08*T;
+      if(rose>0.45*T)D.ph.top=1;
+      if(f.t-D.tS>3){reset(rose>0.45*T?'沒有偵測到擊球：手沒有回到準備的高度':'上桿不夠高：手要舉過肩膀',rose>0.45*T?'impact':'top');return}
+      if(rose>0.45*T&&b.hand.y>D.topF.b.hand.y+0.25*T){
+        const yI=D.addr.b.hand.y-0.15*T;
         if(b.hand.y>=yI){const p=D.fr[n-1],py=p&&p.b?p.b.hand.y:b.hand.y,k=py<yI&&b.hand.y!==py?(yI-py)/(b.hand.y-py):1;
-          D.impF=f;D.impT=p.t+(f.t-p.t)*Math.max(0,Math.min(1,k));D.st='follow';D.msg='收桿中⋯'}
+          D.impF=f;D.impT=p.t+(f.t-p.t)*Math.max(0,Math.min(1,k));D.st='follow';D.ph.impact=1;D.msg='收桿中⋯'}
       }
       return;
     }
     if(D.st==='follow'){
       const since=f.t-D.impT,win=D.fr.filter(x=>x.b&&f.t-x.t<=0.25);
-      const settled=since>0.5&&win.length>=3&&win.every(x=>dist2(x.b.hand,b.hand)<0.06*T);
+      const settled=since>0.5&&win.length>=3&&win.every(x=>dist2(x.b.hand,b.hand)<0.08*T);
       if(settled||since>1.4){
         const sw=analyzeSwing(D.addr,D.tS,D.topF,D.impF,D.impT,f);
         const from=D.fr.indexOf(D.sF);
-        D.st='idle';D.cool=f.t+0.8;D.addr=null;
-        if(sw){D.msg='分析完成，可以再打下一球';onSwing(sw,D.fr.slice(Math.max(0,from-6)))}
-        else D.msg='這一下不像完整的揮桿，請再試一次';
+        if(sw){D.st='idle';D.cool=f.t+0.8;D.addr=null;D.lastLow=null;D.ph.finish=1;D.fail=null;D.msg='分析完成，可以再打下一球';onSwing(sw,D.fr.slice(Math.max(0,from-6)))}
+        else{const back=(D.topF.t-D.tS).toFixed(2),down=(D.impT-D.topF.t).toFixed(2);D.cool=f.t+0.5;
+          reset(`時間不合理（上桿 ${back} 秒、下桿 ${down} 秒），請再試一次`,'finish')}
       }
     }
   };
   return D;
 }
 
+// ---------- 整段找揮桿（手動分析、匯入影片、即時偵測補救都用這個） ----------
+// 找「手的最高點」當頂點：前面有低點（準備），後面手回到低處（擊球）
+function findSwings(frames){
+  const F=frames.filter(x=>x.b);if(F.length<8)return[];
+  const Ts=F.map(x=>x.b.torso).sort((a,b)=>a-b),T=Ts[Ts.length>>1];
+  const out=[];let i=0;
+  while(i<F.length){
+    // 下一個頂點：之後 0.6 秒內最高、且比之前 2.5 秒內的最低點高 0.45T 以上
+    let top=-1;
+    for(let k=i;k<F.length;k++){const y=F[k].b.hand.y;
+      let lowY=-1;for(let j=k;j>=0&&F[k].t-F[j].t<=2.5;j--)lowY=Math.max(lowY,F[j].b.hand.y);
+      if(lowY-y<0.45*T)continue;
+      let isTop=true;for(let j=k+1;j<F.length&&F[j].t-F[k].t<=0.6;j++)if(F[j].b.hand.y<y){isTop=false;break}
+      if(isTop){top=k;break}}
+    if(top<0)break;
+    // 準備：頂點之前 2.5 秒內手最低的那一格
+    let a=top;for(let j=top;j>=0&&F[top].t-F[j].t<=2.5;j--)if(F[j].b.hand.y>=F[a].b.hand.y)a=j;
+    const A=F[a].b.hand,th=0.03*T;let s=a;
+    while(s<top&&dist2(F[s+1].b.hand,A)<=th)s++;
+    const p0=F[s],p1=F[Math.min(top,s+1)],d0=dist2(p0.b.hand,A),d1=dist2(p1.b.hand,A);
+    const tS=p0===p1?p0.t:p0.t+(p1.t-p0.t)*Math.max(0,Math.min(1,(th-d0)/((d1-d0)||1)));
+    // 擊球：頂點之後手回到準備高度附近
+    const yI=A.y-0.15*T;let im=-1;
+    for(let j=top+1;j<F.length&&F[j].t-F[top].t<=0.9;j++)if(F[j].b.hand.y>=yI){im=j;break}
+    if(im<0){i=top+1;continue}
+    const q=F[im-1],k2=q.b.hand.y<yI&&F[im].b.hand.y!==q.b.hand.y?(yI-q.b.hand.y)/(F[im].b.hand.y-q.b.hand.y):1;
+    const impT=q.t+(F[im].t-q.t)*Math.max(0,Math.min(1,k2));
+    // 真的揮桿擊球後手會再往上送（收桿）；只是把手放下來不算
+    let fu=false;for(let j=im;j<F.length&&F[j].t-impT<=0.9;j++)if(F[im].b.hand.y-F[j].b.hand.y>0.3*T){fu=true;break}
+    if(!fu){i=im+1;continue}
+    // 收桿：擊球後手再舉高、慢下來；最多 1.4 秒
+    let fi=im;for(let j=im;j<F.length&&F[j].t-impT<=1.4;j++)fi=j;
+    const sw=analyzeSwing(F[a],tS,F[top],F[im],impT,F[fi]);
+    if(sw)out.push({sw,from:F[a].t});
+    i=fi+1;
+  }
+  return out;
+}
+
 // ---------- 揮桿分析 ----------
 // 回傳時間、節奏與動作指標；距離用「肩膀中點到髖部中點約 50 公分」換算成公分（估算）
 function analyzeSwing(addr,tS,topF,impF,impT,finF){
   const tT=topF.t,back=tT-tS,down=impT-tT;
-  if(!(back>=0.3&&back<=2.2&&down>=0.08&&down<=0.8))return null;
+  if(!window.__looseTime&&!(back>=0.25&&back<=2.5&&down>=0.06&&down<=0.75))return null;
+  if(window.__looseTime&&!(back>0.1&&down>0.03))return null;
   const A=addr.b,Tb=topF.b,I=impF.b,F=finF.b;
   const cm=50/A.torso;
   const s=RG.hand==='R'?1:-1; // 正面：往目標方向的 x 正負；後方：往球的方向
@@ -174,7 +228,7 @@ function flightTips(list){
 const RG=Object.assign({view:'face',hand:'R',club:null,cam:'user',voice:true,replay:true},
   (()=>{try{return JSON.parse(localStorage.getItem('golf-range-set'))||{}}catch(e){return{}}})(),
   {on:false,stream:null,det:null,ring:[],pool:[],swings:[],loading:false,err:'',vid:null,cv:null,lastT:-1,lock:null,flashT:0});
-function saveRG(){try{localStorage.setItem('golf-range-set',JSON.stringify({view:RG.view,hand:RG.hand,club:RG.club,cam:RG.cam,voice:RG.voice,replay:RG.replay,v2:1}))}catch(e){}}
+function saveRG(){try{localStorage.setItem('golf-range-set',JSON.stringify({view:RG.view,hand:RG.hand,club:RG.club,cam:RG.cam,voice:RG.voice,replay:RG.replay,slow:RG.slow,v2:1}))}catch(e){}}
 // 這一版起預設用前鏡頭（看得到自己）
 if(!(()=>{try{return JSON.parse(localStorage.getItem('golf-range-set')||'{}').v2}catch(e){}})()){RG.cam='user';RG.replay=true}
 let RHIST=(()=>{try{return JSON.parse(localStorage.getItem('golf-range-hist'))||[]}catch(e){return[]}})();
@@ -201,6 +255,8 @@ function drawBody(ctx,b,sx,sy,color){
 }
 function nearest(arr,t){let best=null,bd=1e9;for(const x of arr){const d=Math.abs(x.t-t);if(d<bd){bd=d;best=x}}return best}
 
+// MediaPipe 的時間戳必須一直遞增（即時與匯入共用同一個模型）
+function detectAt(v,want){const ts=Math.max(want,(RG.lastTs||0)+1);RG.lastTs=ts;return POSE.detectForVideo(v,ts)}
 async function startCam(){
   RG.err='';RG.loading=true;renderRange();
   try{
@@ -215,9 +271,9 @@ async function startCam(){
       (e&&e.name&&e.name.includes('NotFound'))?'找不到相機。':'無法啟動：'+(POSE?'相機打不開':'姿勢分析模型下載失敗，請確認有網路')+'。';
     stopCam(true);renderRange();return;
   }
-  RG.loading=false;RG.on=true;RG.det=newDetector(onSwing);RG.lastT=-1;
+  RG.loading=false;RG.on=true;RG.det=newDetector(onSwing,onFail);RG.lastT=-1;RG.chk={};RG.lumaN=0;
   try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(l=>RG.lock=l).catch(()=>{})}catch(e){}
-  if(RG.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance('開始，請站好準備姿勢');u.lang='zh-TW';speechSynthesis.speak(u)}catch(e){}}
+  if(RG.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance('開始，請站進框裡');u.lang='zh-TW';speechSynthesis.speak(u)}catch(e){}}
   renderRange();requestAnimationFrame(camLoop);
 }
 function stopCam(silent){
@@ -226,41 +282,215 @@ function stopCam(silent){
   RG.ring.forEach(f=>{if(!f.keep)freeFrame(f.cv)});RG.ring=[];
   if(!silent)renderRange();
 }
+// ---------- 站位燈號：全身入鏡、距離、光線、準備 ----------
+function checkReady(lm,cv){
+  const C=RG.chk||(RG.chk={});
+  if(!lm||lm.length<29){C.body='bad';C.dist='off';C.bodyMsg='看不到人';}
+  else{
+    const inF=i=>lm[i]&&(lm[i].visibility??1)>0.5&&lm[i].x>0.01&&lm[i].x<0.99&&lm[i].y>0.01&&lm[i].y<0.99;
+    const miss=[[0,'頭'],[15,'手'],[16,'手'],[27,'腳'],[28,'腳']].filter(([i])=>!inF(i)).map(x=>x[1]);
+    C.body=miss.length?'bad':'ok';C.bodyMsg=miss.length?`${[...new Set(miss)].join('、')}不在畫面裡`:'';
+    const hgt=(lm[27].y+lm[28].y)/2-lm[0].y;
+    C.dist=hgt<0.38?'bad':hgt<0.48?'warn':hgt>0.9?'bad':'ok';C.distMsg=hgt<0.48?'離手機太遠':hgt>0.9?'離手機太近':'';
+  }
+  // 光線：每 10 格量一次畫面平均亮度
+  if(cv&&(RG.lumaN=(RG.lumaN||0)+1)%10===1){
+    const s=RG.lumaCv||(RG.lumaCv=document.createElement('canvas'));s.width=12;s.height=20;const x=s.getContext('2d',{willReadFrequently:true});
+    x.drawImage(cv,0,0,12,20);const d=x.getImageData(0,0,12,20).data;let sum=0;for(let i=0;i<d.length;i+=4)sum+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    const L=sum/(d.length/4);C.light=L<45?'bad':L<70?'warn':'ok';
+  }
+  const st=RG.det.st;C.ready=st==='ready'?'ok':st==='swing'||st==='follow'?'go':'off';
+}
+const LIGHTS=[['body','front','全身'],['dist','ruler','距離'],['light','sun','光線'],['ready','check','準備']];
+function drawLights(){
+  const el=document.getElementById('rgLights'),ph=document.getElementById('rgPhase'),gd=document.getElementById('rgGuide');if(!el)return;
+  const C=RG.chk||{},key=LIGHTS.map(([k])=>C[k]).join()+'|'+PH.map(k=>RG.det.ph[k]).join();
+  if(key===RG.lightKey)return;RG.lightKey=key;
+  el.innerHTML=LIGHTS.map(([k,i,t])=>`<span class="lt ${C[k]||'off'}">${ic(i,16)}<small>${t}</small></span>`).join('');
+  ph.innerHTML=[['ready','準備'],['top','頂點'],['impact','擊球'],['finish','收桿']].map(([k,t])=>{const v=RG.det.ph[k];return`<span class="ph ${v>0?'ok':v<0?'bad':''}">${v>0?'✓':v<0?'✕':'·'} ${t}</span>`}).join('<i>›</i>');
+  if(gd)gd.setAttribute('class','rgguide '+(C.body==='ok'&&C.dist==='ok'?'ok':C.body==='bad'?'bad':'warn')+(RG.det.st!=='idle'?' dim':''));
+}
 function camLoop(){
   if(!RG.on)return;requestAnimationFrame(camLoop);
   const v=RG.vid;if(!v||v.readyState<2||v.currentTime===RG.lastT)return;RG.lastT=v.currentTime;
   const ts=performance.now(),t=ts/1000;let res;
-  try{res=POSE.detectForVideo(v,ts)}catch(e){return}
+  try{res=detectAt(v,ts)}catch(e){return}
   const W=v.videoWidth,H=v.videoHeight,lm=res&&res.landmarks&&res.landmarks[0],b=bodyOf(lm,W,H);
   RG.det.push({t,b});
-  RG.ring.push({t,cv:grabFrame(v)});
+  const g=grabFrame(v);RG.ring.push({t,cv:g});
   while(RG.ring.length&&t-RG.ring[0].t>5){const o=RG.ring.shift();if(!o.keep)freeFrame(o.cv)}
-  // 畫骨架
   const cv=RG.cv;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
   const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   drawBody(ctx,b,1,1,RG.det.st==='ready'?'#7CFC9A':RG.det.st==='idle'?'rgba(255,255,255,.8)':'#ffd84d');
-  if(false){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,H*0.04,W,H*0.13);ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(H*0.07)}px sans-serif`;ctx.textAlign='center';
-    ctx.fillText(RG.flash,W/2,H*0.13)}
-  const st=document.getElementById('rgStat');if(st&&st.textContent!==RG.det.msg){st.textContent=RG.det.msg;st.className='rgstat '+RG.det.st}
+  checkReady(lm,g);drawLights();
+  const C=RG.chk,msg=RG.det.st==='idle'&&!RG.det.fail&&C.body==='bad'?C.bodyMsg:RG.det.st==='idle'&&!RG.det.fail&&C.dist!=='ok'&&C.distMsg?C.distMsg:RG.det.st==='idle'&&C.light==='bad'?'光線太暗，換個亮一點的位置':RG.det.msg;
+  const st=document.getElementById('rgStat');if(st&&st.textContent!==msg){st.textContent=msg;st.className='rgstat '+(RG.det.fail?'fail':RG.det.st)}
 }
+function onFail(step,msg){
+  showFlash('✕',msg,true);
+  if(RG.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance('沒有抓到，'+msg);u.lang='zh-TW';speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+}
+// 即時錄影抓到一桿
 function onSwing(sw,frames){
-  sw.t=Date.now();sw.cam=RG.cam;sw.club=RG.club;sw.view=RG.view;sw.hand=RG.hand;sw.fl=null;
+  const rep=RG.ring.filter(f=>f.t>=sw.tS-0.25&&f.t<=sw.tF+0.1);
+  addSwing(sw,frames,rep,{cam:RG.cam,vw:RG.vid.videoWidth,vh:RG.vid.videoHeight,live:true});
+}
+// 手動分析：把最近 6 秒整段拿來找揮桿
+function manualAnalyze(){
+  if(!RG.det)return;const got=findSwings(RG.det.fr);
+  const last=got[got.length-1];
+  if(!last){const F=RG.det.fr.filter(x=>x.b);
+    const why=F.length<RG.det.fr.length*0.5?'大部分時間看不到身體，請整個人站進框裡':'手沒有明顯舉高再放下，找不到完整揮桿';
+    showFlash('✕',why,true);return}
+  if(RG.swings.some(s=>Math.abs(s.tS-last.sw.tS)<0.3)){showFlash('✓','這一下已經分析過了');return}
+  RG.det.fail=null;PH.forEach(k=>RG.det.ph[k]=1);
+  onSwing(last.sw,RG.det.fr.filter(x=>x.t>=last.sw.tS-0.4));
+}
+// 共用：把一桿加進清單（即時、手動、匯入影片）
+function addSwing(sw,frames,rep,o){
+  sw.t=Date.now();sw.cam=o.cam;sw.club=RG.club;sw.view=RG.view;sw.hand=RG.hand;sw.fl=null;sw.vw=o.vw;sw.vh=o.vh;sw.src=o.src||'live';
+  sw.slow=o.slow||1;sw.track=o.track||null;
   sw.tips=swingTips(sw);sw.det=frames;
-  // 重播用的畫面：準備前 0.25 秒到收桿
-  sw.rep=RG.ring.filter(f=>f.t>=sw.tS-0.25&&f.t<=sw.tF+0.1);sw.rep.forEach(f=>f.keep=true);
-  // 四張關鍵畫面
+  sw.rep=rep;rep.forEach(f=>f.keep=true);
   const keys=[['準備',sw.tS],['頂點',sw.tT],['擊球',sw.tI],['收桿',sw.tF]];
   sw.kf=keys.map(([n,tk])=>{const f=nearest(sw.rep,tk),d=nearest(frames.filter(x=>x.b),tk);if(!f)return{n,src:''};
     const c=document.createElement('canvas');c.width=f.cv.width;c.height=f.cv.height;const x=c.getContext('2d');x.drawImage(f.cv,0,0);
-    if(d)drawBody(x,d.b,c.width/RG.vid.videoWidth,c.height/RG.vid.videoHeight,'#7CFC9A');return{n,src:c.toDataURL('image/jpeg',0.7)}});
+    if(d)drawBody(x,d.b,c.width/sw.vw,c.height/sw.vh,'#7CFC9A');
+    if(n==='收桿'&&sw.track)drawTrack(x,sw.track,c.width,c.height);
+    return{n,src:c.toDataURL('image/jpeg',0.7)}});
   RG.swings.unshift(sw);
-  // 只留最近 3 球的重播畫面
   RG.swings.slice(3).forEach(s=>{if(s.rep){s.rep.forEach(f=>{f.keep=false;freeFrame(f.cv)});s.rep=null;s.det=null}});
-  RHIST.push({t:sw.t,club:sw.club,view:sw.view,hand:sw.hand,back:sw.back,down:sw.down,ratio:sw.ratio,m:sw.m,fl:null});saveRH();sw.hi=RHIST.length-1;
-  showFlash(`${sw.ratio} : 1`,`${sw.back} / ${sw.down} 秒`);
-  if(RG.replay)instantReplay(sw);
-  if(RG.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance(`上桿 ${sw.back} 秒，下桿 ${sw.down} 秒，節奏 ${sw.ratio} 比 1`);u.lang='zh-TW';u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
-  drawRangeList();
+  RHIST.push({t:sw.t,club:sw.club,view:sw.view,hand:sw.hand,back:sw.back,down:sw.down,ratio:sw.ratio,m:sw.m,fl:null,src:sw.src});saveRH();sw.hi=RHIST.length-1;
+  if(o.live){
+    showFlash(`${sw.ratio} : 1`,`${sw.back} / ${sw.down} 秒`);
+    if(RG.replay)instantReplay(sw);
+    if(RG.voice&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance(`上桿 ${sw.back} 秒，下桿 ${sw.down} 秒，節奏 ${sw.ratio} 比 1`);u.lang='zh-TW';u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+  }
+  if(!o.batch)drawRangeList();
+}
+
+// =================== 匯入影片（含 iPhone 慢動作） ===================
+// 逐格送進姿勢模型 → 整段找揮桿 → 每一桿取重播畫面、嘗試追球
+const seekTo=(v,t)=>new Promise(res=>{let done=false;const ok=()=>{if(!done){done=true;v.removeEventListener('seeked',ok);res()}};v.addEventListener('seeked',ok);v.currentTime=t;setTimeout(ok,2500)});
+function grayFrame(v,w){const h=Math.round(w*v.videoHeight/v.videoWidth);const c=RG.grayCv||(RG.grayCv=document.createElement('canvas'));c.width=w;c.height=h;
+  const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(v,0,0,w,h);const d=x.getImageData(0,0,w,h).data,g=new Uint8Array(w*h);
+  for(let i=0,j=0;j<g.length;i+=4,j++)g[j]=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;return{w,h,g}}
+async function importVideo(file){
+  if(!file)return;if(RG.on)stopCam(true);
+  RG.imp={p:0,msg:'準備中⋯',cancel:false};RG.err='';renderRange();
+  const prog=(p,msg)=>{RG.imp.p=p;if(msg)RG.imp.msg=msg;const b=document.getElementById('impBar'),m=document.getElementById('impMsg');if(b)b.style.width=Math.round(p*100)+'%';if(m)m.textContent=RG.imp.msg+` ${Math.round(p*100)}%`};
+  const url=URL.createObjectURL(file);const v=document.createElement('video');v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';v.src=url;
+  try{
+    await loadPose(m=>prog(0,m));
+    await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('video'));setTimeout(()=>rej(new Error('timeout')),15000)});
+    const D=Math.min(v.duration||0,90),W=v.videoWidth,H=v.videoHeight;if(!D||!W)throw new Error('video');
+    const dt=Math.max(1/30,D/1500);const fr=[];let n=0,seen=0;
+    for(let ft=0;ft<D;ft+=dt){
+      if(RG.imp.cancel)throw new Error('cancel');
+      await seekTo(v,ft);let res;try{res=detectAt(v,(RG.lastTs||0)+dt*1000)}catch(e){res=null}
+      const lm=res&&res.landmarks&&res.landmarks[0],b=bodyOf(lm,W,H);if(b)seen++;fr.push({ft,b});
+      if(++n%5===0)prog(ft/D*0.7,'分析動作中⋯');
+    }
+    // 慢動作：先用影片時間找，上桿超過 2.5 秒就當作慢動作，換算回真實時間
+    let slow=RG.slow==='auto'?1:+RG.slow;
+    const mk=f=>fr.map(x=>({t:x.ft/f,b:x.b}));
+    let got=findSwings(mk(slow));
+    if(RG.slow==='auto'){
+      const raw=findSwingsRaw(fr);
+      if(raw.length){const b=raw[0].back;if(b>2.2){slow=[2,4,8].reduce((a,c)=>Math.abs(b/c-0.9)<Math.abs(b/a-0.9)?c:a,8);got=findSwings(mk(slow))}}
+      if(!got.length&&!raw.length){for(const c of[4,8]){got=findSwings(mk(c));if(got.length){slow=c;break}}}
+    }
+    if(!got.length){URL.revokeObjectURL(url);
+      RG.imp=null;RG.err=seen<fr.length*0.4?'影片裡大部分時間看不到完整的人，請拍到頭到腳。':'影片裡找不到完整的揮桿（手要從準備位置舉高再揮下來）。';renderRange();return}
+    const frames=mk(slow);
+    // 每一桿：重播畫面＋追球
+    for(let k=0;k<got.length;k++){
+      if(RG.imp.cancel)throw new Error('cancel');
+      const sw=got[k].sw;prog(0.7+0.3*k/got.length,`整理第 ${k+1}/${got.length} 球⋯`);
+      const rep=[],t0=sw.tS-0.25,t1=sw.tF+0.1,step=Math.max(dt,(t1-t0)*slow/90);
+      for(let ft=t0*slow;ft<=t1*slow;ft+=step){await seekTo(v,Math.max(0,ft));const c=grabFrame(v);rep.push({t:ft/slow,cv:c})}
+      // 追球：擊球後 0.6 秒（真實時間），越細越好
+      const gs=[],st2=Math.min(dt,1/60),ti=sw.tI*slow;
+      for(let ft=ti;ft<=ti+0.6*slow&&ft<D;ft+=st2){await seekTo(v,ft);gs.push({t:ft/slow,...grayFrame(v,360)})}
+      const impF=nearest(frames.filter(x=>x.b),sw.tI);
+      const track=trackBall(gs,impF&&impF.b,W,H);
+      addSwing(sw,frames.filter(x=>x.t>=sw.tS-0.4&&x.t<=sw.tF+0.2),rep,{cam:null,vw:W,vh:H,src:'video',slow,track,batch:true});
+    }
+    URL.revokeObjectURL(url);RG.imp=null;
+    RG.impNote=`${file.name||'影片'}：找到 ${got.length} 球${slow>1?`（慢動作 1/${slow} 速，時間已換算成真實秒數）`:''}`;
+    renderRange();
+  }catch(e){URL.revokeObjectURL(url);RG.imp=null;RG.err=e.message==='cancel'?'':e.message==='video'||e.message==='timeout'?'這個影片格式打不開，請換一支影片試試。':'姿勢分析模型下載失敗，請確認有網路。';renderRange()}
+}
+// 不換算時間，只用來估計是不是慢動作
+function findSwingsRaw(fr){ // 用影片時間找頂點與擊球，不檢查時間範圍
+  let out=[];window.__looseTime=true;try{out=findSwings(fr.map(x=>({t:x.ft,b:x.b}))).map(x=>x.sw)}finally{window.__looseTime=false}
+  return out}
+
+// =================== 追球 ===================
+// 擊球後連續畫面相減，找「小、亮、在身體外面、越飛越遠」的點。抓不到就回傳 null。
+function trackBall(gs,b,W,H){
+  if(!b||gs.length<4)return null;
+  const w=gs[0].w,h=gs[0].h,sx=w/W,sy=h/H,T=b.torso*sy;
+  const s=RG.hand==='R'?1:-1;
+  const ank=mid(b.la,b.ra),start=RG.view==='face'?{x:ank.x*sx,y:ank.y*sy-0.05*T}:{x:(ank.x+s*0.9*b.torso)*sx,y:ank.y*sy};
+  // 身體範圍（膝蓋以上）不找
+  const xs=[b.ls.x,b.rs.x,b.lw.x,b.rw.x,b.lh.x,b.rh.x,b.nose.x].map(x=>x*sx),ys=[b.nose.y,b.lh.y,b.rh.y].map(y=>y*sy);
+  const bx0=Math.min(...xs)-0.35*T,bx1=Math.max(...xs)+0.35*T,by0=Math.min(...ys)-0.4*T,by1=Math.max(...ys)+0.3*T;
+  const blobsOf=(A,B)=>{const g=B.g,pg=A.g,mask=new Uint8Array(w*h);let cnt=0;
+    for(let y=2;y<h-2;y++)for(let x=2;x<w-2;x++){const i=y*w+x;if(g[i]>140&&g[i]-pg[i]>35&&!(x>bx0&&x<bx1&&y>by0&&y<by1)){mask[i]=1;cnt++}}
+    if(cnt>4000)return[];const out=[],stack=[];
+    for(let i=0;i<mask.length;i++){if(mask[i]!==1)continue;let n=0,cx=0,cy=0;stack.push(i);mask[i]=2;
+      while(stack.length){const k=stack.pop(),x=k%w,y=(k/w)|0;n++;cx+=x;cy+=y;
+        for(const d of[1,-1,w,-w]){const q=k+d;if(q>=0&&q<mask.length&&mask[q]===1){mask[q]=2;stack.push(q)}}}
+      if(n>=1&&n<=90)out.push({x:cx/n,y:cy/n,n})}
+    return out};
+  const pts=[];let miss=0;
+  for(let k=1;k<gs.length&&pts.length<12;k++){
+    const bl=blobsOf(gs[k-1],gs[k]);let pick=null,bd=1e9;
+    if(!pts.length){for(const p of bl){const d=Math.hypot(p.x-start.x,p.y-start.y);if(d<0.45*w&&p.y<start.y+0.1*T&&d<bd){bd=d;pick=p}}}
+    else{const L=pts[pts.length-1],P=pts.length>1?pts[pts.length-2]:{x:start.x,y:start.y};
+      const pred={x:L.x+(L.x-P.x),y:L.y+(L.y-P.y)},dl=Math.hypot(L.x-start.x,L.y-start.y);
+      for(const p of bl){const d=Math.hypot(p.x-pred.x,p.y-pred.y),ds=Math.hypot(p.x-start.x,p.y-start.y);
+        if(ds>dl-2&&d<Math.max(0.2*w,Math.hypot(L.x-P.x,L.y-P.y)*1.2)&&d<bd){bd=d;pick=p}}}
+    if(pick){pts.push({x:pick.x,y:pick.y,t:gs[k].t});miss=0}else if(pts.length&&++miss>2)break;
+  }
+  if(pts.length<3)return null;
+  // 方向一致：每一段都往同一個方向
+  const v0={x:pts[1].x-pts[0].x,y:pts[1].y-pts[0].y};let okd=0;
+  for(let k=2;k<pts.length;k++){const v={x:pts[k].x-pts[k-1].x,y:pts[k].y-pts[k-1].y};if(v.x*v0.x+v.y*v0.y>0)okd++}
+  if(okd<(pts.length-2)*0.6)return null;
+  return{pts:[{x:start.x/w,y:start.y/h,t:pts[0].t-0.01},...pts.map(p=>({x:p.x/w,y:p.y/h,t:p.t}))]};
+}
+// 在畫面上畫追到的球路（upTo：重播時只畫到目前時間）
+function drawTrack(x,tr,cw,ch,upTo){
+  const P=tr.pts.filter(p=>upTo==null||p.t<=upTo);if(P.length<2)return;
+  x.save();x.lineCap='round';x.lineJoin='round';
+  x.strokeStyle='rgba(255,90,40,.35)';x.lineWidth=Math.max(5,cw/30);x.beginPath();P.forEach((p,i)=>i?x.lineTo(p.x*cw,p.y*ch):x.moveTo(p.x*cw,p.y*ch));x.stroke();
+  x.strokeStyle='#ffd84d';x.lineWidth=Math.max(2,cw/90);x.stroke();
+  // 延伸（虛線）
+  if(upTo==null&&P.length>=2){const a=P[P.length-2],b=P[P.length-1];x.setLineDash([4,4]);x.beginPath();x.moveTo(b.x*cw,b.y*ch);x.lineTo((b.x+(b.x-a.x)*3)*cw,(b.y+(b.y-a.y)*3)*ch);x.stroke()}
+  x.restore();
+}
+// =================== 球路圖（從後方看的示意）：依點選的球路畫 ===================
+const FLX={start:{L:-1,C:0,R:1},curve:{L:-1,S:0,R:1},height:{L:14,M:30,H:46}};
+function flightPath(fl){
+  const sd=FLX.start[fl.start||'C'],cv=FLX.curve[fl.curve||'S'],ap=FLX.height[fl.height||'M'];
+  const ex=100+sd*30+cv*26,sx=100,sy=136,ey=90;
+  return{d:`M${sx} ${sy} C ${sx+sd*8} ${sy-ap*2.2}, ${ex-cv*22} ${ey-ap*1.1}, ${ex} ${ey}`,ex,ey};
+}
+function flightSVG(list,big){
+  const shots=list.filter(s=>s.fl&&(s.fl.start||s.fl.curve||s.fl.height));
+  const cols=['#ffd84d','#ff8a5b','#7cc4ff','#9be37a','#f48fb1','#ce93d8'];
+  return`<svg class="flsvg ${big?'big':''}" viewBox="0 0 200 140" role="img" aria-label="球路圖">
+    <defs><linearGradient id="sky${big?1:0}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#9fd0ff"/><stop offset="1" stop-color="#dff0ff"/></linearGradient></defs>
+    <rect width="200" height="92" fill="url(#sky${big?1:0})"/><path d="M0 92 H200 V140 H0z" fill="#5d9b4c"/>
+    <path d="M70 140 L95 92 H105 L130 140z" fill="#6fae5a"/>
+    <path d="M100 140 V92" stroke="#fff" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
+    <path d="M100 92 l-3 -10 h6z" fill="#c0392b"/><path d="M100 92 V80" stroke="#333" stroke-width=".8"/>
+    ${shots.map((s,i)=>{const f=flightPath(s.fl),c=big?cols[i%cols.length]:'#ffd84d';
+      return`<path d="${f.d}" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="${big?3:4}"/><path d="${f.d}" fill="none" stroke="${c}" stroke-width="${big?2:2.5}" stroke-linecap="round"/><circle cx="${f.ex}" cy="${f.ey}" r="2.5" fill="${c}" stroke="#333" stroke-width=".6"/>`}).join('')}
+    ${!shots.length?`<text x="100" y="60" text-anchor="middle" font-size="9" fill="#456">點下面的球路就會畫出軌跡</text>`:''}
+  </svg>`;
 }
 
 function rangeSummaryHTML(){
@@ -281,6 +511,7 @@ function rangeSummaryHTML(){
     ${L.length>=3&&+sdr>0.4?`<div class="adv warn" style="margin-top:8px">⚠️ 節奏不太穩定（每球差異 ±${sdr}）。可以邊揮邊在心裡固定數拍子。</div>`:''}
     ${common.map(t=>`<div class="adv warn" style="margin-top:8px">🔁 常出現：${t}</div>`).join('')}
     ${fl.length?`<div style="font-size:13px;color:var(--mute);margin-top:10px">球路紀錄（${fl.length} 球）：${['start','curve','contact'].map(dist).filter(Boolean).join('｜')}</div>`:''}
+    ${fl.length?flightSVG(L.slice(0,20),true):''}
     ${ft.map(t=>`<div class="adv tip" style="margin-top:8px">👉 ${t}</div>`).join('')}
     ${fl.length<5?`<div class="hint">每球打完點一下球路，累積 5 球以上會分析球路問題。</div>`:''}
   </div>`;
@@ -295,13 +526,14 @@ function swingCardHTML(s,idx,n){const i=idx;
   const FH={start:['arrow','起飛'],curve:['curveR','彎曲'],contact:['club','擊球'],height:['hhigh','高度']};
   const fb=(k)=>`<div class="flrow"><span>${ic(FH[k][0],16)}<small>${FH[k][1]}</small></span>${FI[k].map(([v,i,t])=>`<button data-fl="${idx}:${k}:${v}" class="${s.fl&&s.fl[k]===v?'on':''}" aria-label="${FL[k][v]}">${i?ic(i,22):''}${t?`<b>${t}</b>`:''}</button>`).join('')}</div>`;
   return`<div class="card swing">
-    <div class="row" style="justify-content:space-between"><b>第 ${n} 球</b><span style="font-size:13px;color:var(--mute)">${esc(clubName(s.club))}・${s.view==='face'?'正面':'後方'}・${new Date(s.t).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span></div>
+    <div class="row" style="justify-content:space-between"><b>第 ${n} 球</b><span style="font-size:13px;color:var(--mute)">${s.src==='video'?'影片・':''}${esc(clubName(s.club))}・${s.view==='face'?'正面':'後方'}・${new Date(s.t).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span></div>
     <div class="tempo"><div><b>${s.back}</b><span>上桿（秒）</span></div><div><b>${s.down}</b><span>下桿（秒）</span></div><div class="hi"><b>${s.ratio} : 1</b><span>節奏</span></div></div>
     <div class="kf ${s.cam==='user'?'mirror':''}">${s.kf.map(k=>`<div>${k.src?`<img src="${k.src}" alt="${k.n}">`:''}<span>${k.n}</span></div>`).join('')}</div>
     ${s.rep?`<div class="rpwrap"><canvas class="rp ${s.cam==='user'?'mirror':''}" id="rp${i}"></canvas><div class="row"><button class="btn ghost sm" data-rp="${i}:0.25">▶ 慢動作</button><button class="btn ghost sm" data-rp="${i}:1">▶ 原速</button></div></div>`:''}
     <div class="chips">${chips.map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
     <div class="advbox">${s.tips.map(t=>`<div class="adv ${t.lv}">${t.lv==='warn'?'⚠️':t.lv==='ok'?'✅':'ℹ️'} ${t.t}</div>`).join('')}</div>
-    <div class="flhead">${ic('target',16)} 球路</div>
+    <div class="flhead">${ic('target',16)} 球路${s.track?'<span class="trk">自動追到球</span>':''}</div>
+    ${flightSVG([s])}
     ${['start','curve','contact','height'].map(fb).join('')}
   </div>`;
 }
@@ -317,7 +549,8 @@ function drawRangeList(){
 }
 function drawRep(c,s,k){
   const f=s.rep[k];if(!f)return;const x=c.getContext('2d');x.drawImage(f.cv,0,0);
-  const d=s.det&&nearest(s.det.filter(q=>q.b),f.t);if(d&&RG.vid)drawBody(x,d.b,c.width/RG.vid.videoWidth,c.height/RG.vid.videoHeight,'#7CFC9A');
+  const d=s.det&&nearest(s.det.filter(q=>q.b),f.t);if(d&&s.vw)drawBody(x,d.b,c.width/s.vw,c.height/s.vh,'#7CFC9A');
+  if(s.track&&f.t>=s.tI)drawTrack(x,s.track,c.width,c.height,f.t);
   const ph=f.t<s.tT?'上桿':f.t<s.tI?'下桿':'收桿';if(s.cam==='user')return;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,0,c.width,20);x.fillStyle='#fff';x.font='bold 12px sans-serif';x.fillText(ph,6,14);
 }
 function playRep(i,speed){
@@ -344,9 +577,9 @@ function addClubRange(){
     if(RG.on){const sel=document.getElementById('rgClub2');if(sel)sel.innerHTML=clubOpts()}else renderRange()};
 }
 // 打完一球：大字顯示節奏
-function showFlash(big,small){
+function showFlash(big,small,bad){
   const el=document.getElementById('rgFlash');if(!el)return;
-  el.innerHTML=`<b>${big}</b><small>${small}</small>`;el.classList.add('show');
+  el.innerHTML=`<b>${big}</b><small>${small}</small>`;el.classList.add('show');el.classList.toggle('bad',!!bad);
   clearTimeout(RG.flashTO);RG.flashTO=setTimeout(()=>el.classList.remove('show'),4000);
 }
 // 打完一球：在畫面上直接慢動作重播（前鏡頭時看得到）
@@ -364,7 +597,7 @@ async function flipCam(){
   RG.cam=RG.cam==='user'?'environment':'user';saveRG();
   try{RG.stream&&RG.stream.getTracks().forEach(t=>t.stop())}catch(e){}
   try{RG.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:RG.cam,width:{ideal:720},height:{ideal:1280},frameRate:{ideal:60}}});
-    RG.vid.srcObject=RG.stream;await RG.vid.play().catch(()=>{});RG.det=newDetector(onSwing);RG.lastT=-1;
+    RG.vid.srcObject=RG.stream;await RG.vid.play().catch(()=>{});RG.det=newDetector(onSwing,onFail);RG.lastT=-1;RG.lightKey='';
     RG.ring.forEach(f=>{if(!f.keep)freeFrame(f.cv)});RG.ring=[];
   }catch(e){RG.err='無法切換鏡頭';stopCam();return}
   const box=document.getElementById('rgCam');if(box)box.classList.toggle('mirror',RG.cam==='user');
@@ -372,13 +605,23 @@ async function flipCam(){
 function renderRange(){
   document.body.classList.add('starting');
   if(!RG.club&&BAG.clubs.length)RG.club=(BAG.clubs.find(c=>/7/.test(c.name))||BAG.clubs[0]).id;
-  const seg=(k,arr)=>`<div class="icrow">${arr.map(([v,i,t])=>`<button data-rg="${k}:${v}" class="${RG[k]===v?'on':''}">${ic(i,24)}<small>${t}</small></button>`).join('')}</div>`;
+  if(RG.slow==null)RG.slow='auto';
+  const seg=(k,arr)=>`<div class="icrow">${arr.map(([v,i,t])=>`<button data-rg="${k}:${v}" class="${String(RG[k])===String(v)?'on':''}">${i?ic(i,24):''}<small>${t}</small></button>`).join('')}</div>`;
   const clubRow=id=>`<div class="rgclub">${ic('club',24)}<select id="${id}">${clubOpts()}</select><button class="btn sm" id="rgAddClub" aria-label="新增球桿">${ic('plus',20)}</button></div>`;
-  $('#app').innerHTML=`<div class="card">
-    <div class="row" style="justify-content:space-between"><span class="rghead">${ic('golfer',28)} 練習場</span><button class="icbtn dark" id="rgExit" aria-label="離開">${ic('x',20)}</button></div>
-    ${RG.on?`<div class="rgcam ${RG.cam==='user'?'mirror':''}" id="rgCam"><div class="rgflash" id="rgFlash"></div><div class="rgstat idle" id="rgStat">請站到畫面中</div></div>
-      <div class="row" style="margin-top:8px">${clubRow('rgClub2')}<button class="btn sm" id="rgFlip" style="margin:0" aria-label="切換鏡頭">${ic('swap',20)}</button><button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">${ic('stop',20)}</button></div>`:
-    `${seg('view',[['face','front','正面'],['dtl','side','後方']])}
+  const GUIDE=`<svg class="rgguide" id="rgGuide" viewBox="0 0 90 160" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <rect x="14" y="5" width="62" height="150" rx="6" fill="none" stroke-dasharray="4 3"/>
+    <circle cx="45" cy="20" r="7" fill="none"/><path d="M45 27v8M31 37h28M31 37l4 26 10 18M59 37l-4 26-10 18M36 72h18M36 72l-6 72M54 72l6 72M24 148h42" fill="none"/></svg>`;
+  let body;
+  if(RG.imp){
+    body=`<div class="impbox">${ic('play',36)}<div id="impMsg">${RG.imp.msg} ${Math.round(RG.imp.p*100)}%</div>
+      <div class="bar"><div id="impBar" style="width:${Math.round(RG.imp.p*100)}%"></div></div>
+      <button class="btn ghost" id="impCancel">${ic('x',18)} 取消</button></div>`;
+  }else if(RG.on){
+    body=`<div class="rgcam ${RG.cam==='user'?'mirror':''}" id="rgCam">${GUIDE}<div class="rglights" id="rgLights"></div><div class="rgphase" id="rgPhase"></div><div class="rgflash" id="rgFlash"></div><div class="rgstat idle" id="rgStat">請站到框裡</div></div>
+      <button class="btn rgmanual" id="rgManual">${ic('target',22)} 分析剛剛那一下</button>
+      <div class="row" style="margin-top:8px">${clubRow('rgClub2')}<button class="btn sm" id="rgFlip" style="margin:0" aria-label="切換鏡頭">${ic('swap',20)}</button><button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">${ic('stop',20)}</button></div>`;
+  }else{
+    body=`${seg('view',[['face','front','正面'],['dtl','side','後方']])}
     <div class="hint" style="margin-top:6px">${VIEWHELP[RG.view]}${RG.cam==='user'?'<br>前鏡頭：手機螢幕朝向你，揮完可以直接看重播。':''}</div>
     ${seg('hand',[['R','right','右打'],['L','left','左打']])}
     ${clubRow('rgClub')}
@@ -386,18 +629,29 @@ function renderRange(){
     ${seg('replay',[[true,'play','自動重播'],[false,'x','不重播']])}
     ${seg('voice',[[true,'speaker','語音開'],[false,'mute','語音關']])}
     ${RG.err?`<div class="adv warn" style="margin-top:10px">${RG.err}</div>`:''}
-    <button class="btn rgstart" id="rgStart" ${RG.loading?'disabled':''}>${ic('camera',28)} ${RG.loading?'準備中⋯':'開始'}</button>
-    <details class="hint" id="rgLoad"><summary>ⓘ</summary>${RG.loading?'正在開啟相機與分析模型⋯':'第一次使用需要下載姿勢分析模型（約 10 MB），請在有網路的地方開啟。影像只在你的手機上分析，不會上傳。'}</details>`}
-  </div>
+    ${RG.impNote?`<div class="adv ok" style="margin-top:10px">${ic('check',16)} ${esc(RG.impNote)}</div>`:''}
+    <button class="btn rgstart" id="rgStart" ${RG.loading?'disabled':''}>${ic('camera',28)} ${RG.loading?'準備中⋯':'開始錄影'}</button>
+    <div class="impsec"><div class="imph">${ic('play',18)} 或匯入已經拍好的影片</div>
+      ${seg('slow',[['auto','','自動'],['1','','原速'],['4','','慢動作 1/4'],['8','','慢動作 1/8']])}
+      <label class="btn ghost rgimport">${ic('plus',20)} 選擇影片<input type="file" accept="video/*" id="rgFile" hidden></label>
+      <div class="hint">建議用 iPhone 慢動作拍，節奏和動作會更準；從後方拍才有機會自動追到球。</div></div>
+    <details class="hint" id="rgLoad"><summary>ⓘ</summary>${RG.loading?'正在開啟相機與分析模型⋯':'第一次使用需要下載姿勢分析模型（約 10 MB），請在有網路的地方開啟。影像只在你的手機上分析，不會上傳。'}</details>`;
+  }
+  $('#app').innerHTML=`<div class="card">
+    <div class="row" style="justify-content:space-between"><span class="rghead">${ic('golfer',28)} 練習場</span><button class="icbtn dark" id="rgExit" aria-label="離開">${ic('x',20)}</button></div>
+    ${body}</div>
   <div id="rgSum"></div><div id="rgList"></div>`;
-  $('#rgAddClub').onclick=addClubRange;
-  if(RG.on){const box=$('#rgCam');box.prepend(RG.cv);box.prepend(RG.vid);RG.vid.play().catch(()=>{});
-    $('#rgStop').onclick=()=>stopCam();$('#rgFlip').onclick=flipCam;$('#rgClub2').onchange=e=>{RG.club=e.target.value;saveRG()}}
-  else{
+  const on=(id,f)=>{const e=document.getElementById(id);if(e)e.onclick=f};
+  on('rgAddClub',addClubRange);
+  on('impCancel',()=>{if(RG.imp)RG.imp.cancel=true});
+  if(RG.on){const box=$('#rgCam');box.prepend(RG.cv);box.prepend(RG.vid);RG.vid.play().catch(()=>{});RG.lightKey='';
+    on('rgStop',()=>stopCam());on('rgFlip',flipCam);on('rgManual',manualAnalyze);$('#rgClub2').onchange=e=>{RG.club=e.target.value;saveRG()}}
+  else if(!RG.imp){
     document.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{const[k,v]=b.dataset.rg.split(':');RG[k]=v==='true'?true:v==='false'?false:v;saveRG();renderRange()});
     $('#rgClub').onchange=e=>{RG.club=e.target.value;saveRG()};
-    $('#rgStart').onclick=()=>{if(RG.voice&&window.speechSynthesis){try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}}startCam()};
+    on('rgStart',()=>{RG.impNote='';if(RG.voice&&window.speechSynthesis){try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}}startCam()});
+    $('#rgFile').onchange=e=>{RG.impNote='';importVideo(e.target.files[0])};
   }
-  $('#rgExit').onclick=()=>{stopCam(true);START.step='home';view='start';render();window.scrollTo(0,0)};
+  $('#rgExit').onclick=()=>{if(RG.imp)RG.imp.cancel=true;stopCam(true);START.step='home';view='start';render();window.scrollTo(0,0)};
   drawRangeList();
 }
