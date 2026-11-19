@@ -308,7 +308,9 @@ function drawLights(){
   if(key===RG.lightKey)return;RG.lightKey=key;
   el.innerHTML=LIGHTS.map(([k,i,t])=>`<span class="lt ${C[k]||'off'}">${ic(i,16)}<small>${t}</small></span>`).join('');
   ph.innerHTML=[['ready','準備'],['top','頂點'],['impact','擊球'],['finish','收桿']].map(([k,t])=>{const v=RG.det.ph[k];return`<span class="ph ${v>0?'ok':v<0?'bad':''}">${v>0?'✓':v<0?'✕':'·'} ${t}</span>`}).join('<i>›</i>');
-  if(gd)gd.setAttribute('class','rgguide '+(C.body==='ok'&&C.dist==='ok'?'ok':C.body==='bad'?'bad':'warn')+(RG.det.st!=='idle'?' dim':''));
+  const rd=RG.det.st==='ready',mv=RG.det.st==='swing'||RG.det.st==='follow';
+  if(gd)gd.setAttribute('class','rgguide '+(rd?'go':C.body==='ok'&&C.dist==='ok'?'ok':C.body==='bad'?'bad':'warn')+(mv?' dim':''));
+  const box=document.getElementById('rgCam');if(box)box.classList.toggle('isready',rd);
 }
 function camLoop(){
   if(!RG.on)return;requestAnimationFrame(camLoop);
@@ -324,7 +326,8 @@ function camLoop(){
   drawBody(ctx,b,1,1,RG.det.st==='ready'?'#7CFC9A':RG.det.st==='idle'?'rgba(255,255,255,.8)':'#ffd84d');
   checkReady(lm,g);drawLights();
   const C=RG.chk,msg=RG.det.st==='idle'&&!RG.det.fail&&C.body==='bad'?C.bodyMsg:RG.det.st==='idle'&&!RG.det.fail&&C.dist!=='ok'&&C.distMsg?C.distMsg:RG.det.st==='idle'&&C.light==='bad'?'光線太暗，換個亮一點的位置':RG.det.msg;
-  const st=document.getElementById('rgStat');if(st&&st.textContent!==msg){st.textContent=msg;st.className='rgstat '+(RG.det.fail?'fail':RG.det.st)}
+  const shown=RG.det.st==='ready'?'✓ '+msg:msg;
+  const st=document.getElementById('rgStat');if(st&&st.textContent!==shown){st.textContent=shown;st.className='rgstat '+(RG.det.fail&&RG.det.st!=='ready'?'fail':RG.det.st)}
 }
 function onFail(step,msg){
   showFlash('✕',msg,true);
