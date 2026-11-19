@@ -225,10 +225,11 @@ function flightTips(list){
 }
 
 // =================== 練習場畫面 ===================
-const RG=Object.assign({view:'face',hand:'R',club:null,cam:'user',voice:true,replay:true},
+const RG=Object.assign({view:'face',hand:'R',club:null,cam:'user',voice:true,replay:true,mirror:false},
   (()=>{try{return JSON.parse(localStorage.getItem('golf-range-set'))||{}}catch(e){return{}}})(),
   {on:false,stream:null,det:null,ring:[],pool:[],swings:[],loading:false,err:'',vid:null,cv:null,lastT:-1,lock:null,flashT:0});
-function saveRG(){try{localStorage.setItem('golf-range-set',JSON.stringify({view:RG.view,hand:RG.hand,club:RG.club,cam:RG.cam,voice:RG.voice,replay:RG.replay,slow:RG.slow,v2:1}))}catch(e){}}
+const isMirror=()=>RG.cam==='user'&&RG.mirror===true; // 前鏡頭預設不鏡像：右打就顯示右打
+function saveRG(){try{localStorage.setItem('golf-range-set',JSON.stringify({view:RG.view,hand:RG.hand,club:RG.club,cam:RG.cam,voice:RG.voice,replay:RG.replay,slow:RG.slow,mirror:RG.mirror,v2:1}))}catch(e){}}
 // 這一版起預設用前鏡頭（看得到自己）
 if(!(()=>{try{return JSON.parse(localStorage.getItem('golf-range-set')||'{}').v2}catch(e){}})()){RG.cam='user';RG.replay=true}
 let RHIST=(()=>{try{return JSON.parse(localStorage.getItem('golf-range-hist'))||[]}catch(e){return[]}})();
@@ -336,7 +337,7 @@ function onFail(step,msg){
 // 即時錄影抓到一桿
 function onSwing(sw,frames){
   const rep=RG.ring.filter(f=>f.t>=sw.tS-0.25&&f.t<=sw.tF+0.1);
-  addSwing(sw,frames,rep,{cam:RG.cam,vw:RG.vid.videoWidth,vh:RG.vid.videoHeight,live:true});
+  addSwing(sw,frames,rep,{cam:RG.cam,mirror:isMirror(),vw:RG.vid.videoWidth,vh:RG.vid.videoHeight,live:true});
 }
 // 手動分析：把最近 6 秒整段拿來找揮桿
 function manualAnalyze(){
@@ -351,7 +352,7 @@ function manualAnalyze(){
 }
 // 共用：把一桿加進清單（即時、手動、匯入影片）
 function addSwing(sw,frames,rep,o){
-  sw.t=Date.now();sw.cam=o.cam;sw.club=RG.club;sw.view=RG.view;sw.hand=RG.hand;sw.fl=null;sw.vw=o.vw;sw.vh=o.vh;sw.src=o.src||'live';
+  sw.t=Date.now();sw.cam=o.cam;sw.mirror=!!o.mirror;sw.club=RG.club;sw.view=RG.view;sw.hand=RG.hand;sw.fl=null;sw.vw=o.vw;sw.vh=o.vh;sw.src=o.src||'live';
   sw.slow=o.slow||1;sw.track=o.track||null;
   sw.tips=swingTips(sw);sw.det=frames;
   sw.rep=rep;rep.forEach(f=>f.keep=true);
@@ -531,8 +532,8 @@ function swingCardHTML(s,idx,n){const i=idx;
   return`<div class="card swing">
     <div class="row" style="justify-content:space-between"><b>第 ${n} 球</b><span style="font-size:13px;color:var(--mute)">${s.src==='video'?'影片・':''}${esc(clubName(s.club))}・${s.view==='face'?'正面':'後方'}・${new Date(s.t).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span></div>
     <div class="tempo"><div><b>${s.back}</b><span>上桿（秒）</span></div><div><b>${s.down}</b><span>下桿（秒）</span></div><div class="hi"><b>${s.ratio} : 1</b><span>節奏</span></div></div>
-    <div class="kf ${s.cam==='user'?'mirror':''}">${s.kf.map(k=>`<div>${k.src?`<img src="${k.src}" alt="${k.n}">`:''}<span>${k.n}</span></div>`).join('')}</div>
-    ${s.rep?`<div class="rpwrap"><canvas class="rp ${s.cam==='user'?'mirror':''}" id="rp${i}"></canvas><div class="row"><button class="btn ghost sm" data-rp="${i}:0.25">▶ 慢動作</button><button class="btn ghost sm" data-rp="${i}:1">▶ 原速</button></div></div>`:''}
+    <div class="kf ${s.mirror?'mirror':''}">${s.kf.map(k=>`<div>${k.src?`<img src="${k.src}" alt="${k.n}">`:''}<span>${k.n}</span></div>`).join('')}</div>
+    ${s.rep?`<div class="rpwrap"><canvas class="rp ${s.mirror?'mirror':''}" id="rp${i}"></canvas><div class="row"><button class="btn ghost sm" data-rp="${i}:0.25">▶ 慢動作</button><button class="btn ghost sm" data-rp="${i}:1">▶ 原速</button></div></div>`:''}
     <div class="chips">${chips.map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
     <div class="advbox">${s.tips.map(t=>`<div class="adv ${t.lv}">${t.lv==='warn'?'⚠️':t.lv==='ok'?'✅':'ℹ️'} ${t.t}</div>`).join('')}</div>
     <div class="flhead">${ic('target',16)} 球路${s.track?'<span class="trk">自動追到球</span>':''}</div>
@@ -554,7 +555,7 @@ function drawRep(c,s,k){
   const f=s.rep[k];if(!f)return;const x=c.getContext('2d');x.drawImage(f.cv,0,0);
   const d=s.det&&nearest(s.det.filter(q=>q.b),f.t);if(d&&s.vw)drawBody(x,d.b,c.width/s.vw,c.height/s.vh,'#7CFC9A');
   if(s.track&&f.t>=s.tI)drawTrack(x,s.track,c.width,c.height,f.t);
-  const ph=f.t<s.tT?'上桿':f.t<s.tI?'下桿':'收桿';if(s.cam==='user')return;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,0,c.width,20);x.fillStyle='#fff';x.font='bold 12px sans-serif';x.fillText(ph,6,14);
+  const ph=f.t<s.tT?'上桿':f.t<s.tI?'下桿':'收桿';if(s.mirror)return;x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,0,c.width,20);x.fillStyle='#fff';x.font='bold 12px sans-serif';x.fillText(ph,6,14);
 }
 function playRep(i,speed){
   const s=RG.swings[i],c=document.getElementById('rp'+i);if(!s||!s.rep||!c)return;
@@ -603,7 +604,7 @@ async function flipCam(){
     RG.vid.srcObject=RG.stream;await RG.vid.play().catch(()=>{});RG.det=newDetector(onSwing,onFail);RG.lastT=-1;RG.lightKey='';
     RG.ring.forEach(f=>{if(!f.keep)freeFrame(f.cv)});RG.ring=[];
   }catch(e){RG.err='無法切換鏡頭';stopCam();return}
-  const box=document.getElementById('rgCam');if(box)box.classList.toggle('mirror',RG.cam==='user');
+  const box=document.getElementById('rgCam');if(box)box.classList.toggle('mirror',isMirror());
 }
 function renderRange(){
   document.body.classList.add('starting');
@@ -620,7 +621,7 @@ function renderRange(){
       <div class="bar"><div id="impBar" style="width:${Math.round(RG.imp.p*100)}%"></div></div>
       <button class="btn ghost" id="impCancel">${ic('x',18)} 取消</button></div>`;
   }else if(RG.on){
-    body=`<div class="rgcam ${RG.cam==='user'?'mirror':''}" id="rgCam">${GUIDE}<div class="rglights" id="rgLights"></div><div class="rgphase" id="rgPhase"></div><div class="rgflash" id="rgFlash"></div><div class="rgstat idle" id="rgStat">請站到框裡</div></div>
+    body=`<div class="rgcam ${isMirror()?'mirror':''}" id="rgCam">${GUIDE}<div class="rglights" id="rgLights"></div><div class="rgphase" id="rgPhase"></div><div class="rgflash" id="rgFlash"></div><div class="rgstat idle" id="rgStat">請站到框裡</div></div>
       <button class="btn rgmanual" id="rgManual">${ic('target',22)} 分析剛剛那一下</button>
       <div class="row" style="margin-top:8px">${clubRow('rgClub2')}<button class="btn sm" id="rgFlip" style="margin:0" aria-label="切換鏡頭">${ic('swap',20)}</button><button class="btn sm" id="rgStop" style="margin:0;background:var(--red)">${ic('stop',20)}</button></div>`;
   }else{
@@ -629,6 +630,7 @@ function renderRange(){
     ${seg('hand',[['R','right','右打'],['L','left','左打']])}
     ${clubRow('rgClub')}
     ${seg('cam',[['user','selfie','前鏡頭'],['environment','camera','後鏡頭']])}
+    ${RG.cam==='user'?seg('mirror',[[false,'front','正常'],[true,'swap','鏡像']]):''}
     ${seg('replay',[[true,'play','自動重播'],[false,'x','不重播']])}
     ${seg('voice',[[true,'speaker','語音開'],[false,'mute','語音關']])}
     ${RG.err?`<div class="adv warn" style="margin-top:10px">${RG.err}</div>`:''}
